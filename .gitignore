@@ -1,0 +1,12 @@
+# R session files
+.Rhistory
+.Rdata
+.RData
+.Rproj.user
+
+# Test output
+*.docx
+
+# OS files
+.DS_Store
+Thumbs.db
