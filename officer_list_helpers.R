@@ -233,18 +233,26 @@
 # a BORDER or FILL (background colour), the indent pushes the content area
 # rightward, creating an ugly gap between the border/fill edge and the text.
 #
-# The fix: FLUSH-LEFT mode. Set the paragraph indent to zero and use a
-# TAB STOP to create the gap between the bullet/number and the text:
+# The fix: FLUSH-LEFT mode. Use w:left to set where wrapped lines and text
+# start, w:hanging to push the bullet inboard by one tab_pos, and a tab stop
+# at w:left so the first-line text aligns with wrapped lines:
 #
-#   FLUSH-LEFT (tab_pos mode):
-#     <w:ind w:left="0" w:firstLine="0"/>
-#     <w:tabs><w:tab w:val="left" w:pos="360"/></w:tabs>
+#   FLUSH-LEFT (tab_pos mode, with tab_pos = 360):
+#     <w:ind w:left="720" w:hanging="360"/>
+#     <w:tabs><w:tab w:val="left" w:pos="720"/></w:tabs>
 #     <w:suff w:val="tab"/>
 #
-#     |• → Bullet text starts here
-#     |↑    ↑ tab stop at pos=360 pushes text inward
-#     |↑ bullet at left margin (position 0)
-#     |↑ border/fill edge — no gap!
+#     |   •  Bullet text starts here and if it          |
+#     |      wraps, the second line aligns here too.    |
+#     |   ↑  ↑                                          |
+#     |   |  left=720 (text + wrapped lines)            |
+#     |   bullet at left-hanging = 720-360 = 360        |
+#     |                                                 |
+#     ↑ border/fill edge — stays at margin!             |
+#
+# The paragraph's style border/fill extends to the paragraph margin,
+# NOT to w:left. Only the text content is indented. So borders and
+# fills are preserved at full width.
 #
 # The <w:suff w:val="tab"/> element tells Word: "after the bullet/number,
 # insert a tab character (not a space)." The tab stop then controls where
@@ -322,16 +330,42 @@ BULLET_GLYPHS <- c("\u2022", "\u25e6", "\u25aa")
       ilvl, fmt, text, left_indent
     )
   } else {
-    # FLUSH-LEFT MODE: zero indent, tab stop for bullet-to-text gap.
+    # FLUSH-LEFT MODE: bullet inboard, wrapped lines block-indented.
     #
-    # For ilvl 0: indent = 0, tab at tab_pos
-    # For ilvl 1: indent = tab_pos, tab at tab_pos * 2
-    # For ilvl 2: indent = tab_pos * 2, tab at tab_pos * 3
+    # The tab_pos value controls the gap between the bullet and the text.
+    # For each level, we calculate three positions:
     #
-    # This gives nested levels a staircase effect while keeping ilvl 0
-    # flush with the left margin (preserving borders/fills).
-    level_indent <- as.integer(tab_pos) * ilvl
-    level_tab <- as.integer(tab_pos) * (ilvl + 1L)
+    #   bullet_pos: where the bullet/number appears
+    #   text_pos:   where the text starts (and where wrapped lines align)
+    #   tab_at:     where the tab stop is (same as text_pos)
+    #
+    # For ilvl 0: bullet at tab_pos, text at tab_pos*2
+    # For ilvl 1: bullet at tab_pos*2, text at tab_pos*3
+    # For ilvl 2: bullet at tab_pos*3, text at tab_pos*4
+    #
+    # We achieve this with:
+    #   w:left  = text_pos   (where wrapped lines start)
+    #   w:hanging = tab_pos  (bullet hangs back by one tab_pos from text)
+    #   tab stop at text_pos (first-line text aligns with wrapped lines)
+    #
+    # The result looks like:
+    #
+    #   |   •  Bullet text starts here and if it        |
+    #   |      wraps to a second line, that line aligns  |
+    #   |      with the text, not the bullet.            |
+    #   |   ↑  ↑                                         |
+    #   |   |  text_pos (w:left and tab stop)            |
+    #   |   bullet_pos (w:left - w:hanging)              |
+    #   |                                                |
+    #   ↑ border/fill edge stays at margin               |
+    #
+    # The paragraph's style border and fill are not affected by w:left
+    # in the numbering definition — they still extend to the paragraph
+    # margin. Only the TEXT is indented inward.
+
+    tp <- as.integer(tab_pos)
+    text_pos <- tp * (ilvl + 2L)
+    hanging  <- tp
 
     sprintf(
       paste0(
@@ -342,12 +376,12 @@ BULLET_GLYPHS <- c("\u2022", "\u25e6", "\u25aa")
           '<w:suff w:val="tab"/>',
           '<w:lvlJc w:val="left"/>',
           '<w:pPr>',
-            '<w:ind w:left="%d" w:firstLine="0"/>',
+            '<w:ind w:left="%d" w:hanging="%d"/>',
             '<w:tabs><w:tab w:val="left" w:pos="%d"/></w:tabs>',
           '</w:pPr>',
         '</w:lvl>'
       ),
-      ilvl, fmt, text, level_indent, level_tab
+      ilvl, fmt, text, text_pos, hanging, text_pos
     )
   }
 }
