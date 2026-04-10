@@ -1,36 +1,9 @@
 # ==============================================================================
 # test_officer_list_helpers.R
 #
-# Tests for officer_list_helpers.R.
+# Tests for officer_list_helpers.R. Run with:
 #
-# HOW TO RUN
-# ==========
-#
-#   Put this file in the same directory as officer_list_helpers.R, then:
-#
-#     Rscript test_officer_list_helpers.R
-#
-#   Each test creates a temporary document in memory — nothing is saved to
-#   disk. If all tests pass you'll see "ALL 12 TESTS PASSED". If any test
-#   fails, the script stops immediately with an error message explaining
-#   what went wrong.
-#
-#
-# WHAT EACH TEST VERIFIES
-# =======================
-#
-#    1. Bullet items get <w:numPr> and numbering.xml has a bullet format
-#    2. Decimal items get <w:numPr> and numbering.xml has a decimal format
-#    3. The ilvl parameter produces the correct indent level in the XML
-#    4. list_end() causes a new <w:num> with <w:startOverride> (restart)
-#    5. Switching list types (bullet -> decimal) auto-restarts
-#    6. Custom paragraph styles coexist with list numbering
-#    7. list_add_fpar() works with formatted text (bold, italic, etc.)
-#    8. list_add_blocks() tags every paragraph in the block
-#    9. Saved .docx can be reopened without corruption (round-trip)
-#   10. list_inspect() runs without error (smoke test)
-#   11. Consecutive same-type calls reuse the same numId (continuation)
-#   12. list_end() is safe to call anywhere, any number of times
+#   Rscript test_officer_list_helpers.R
 #
 # ==============================================================================
 
@@ -39,16 +12,11 @@ library(xml2)
 source("officer_list_helpers.R")
 
 
-# ==============================================================================
-# TEST UTILITIES
-#
-# Small helpers that make the test code more readable.
-# ==============================================================================
+# ---- Test helpers ------------------------------------------------------------
 
 test_count <- 0L
 pass_count <- 0L
 
-#' Run one named test. Stops with a clear message on failure.
 run_test <- function(name, expr) {
   test_count <<- test_count + 1L
   cat(sprintf("  [%2d] %s ... ", test_count, name))
@@ -66,12 +34,10 @@ run_test <- function(name, expr) {
   )
 }
 
-#' Assert a condition is TRUE, or stop with the given message.
 assert <- function(condition, message = "assertion failed") {
   if (!isTRUE(condition)) stop(message, call. = FALSE)
 }
 
-#' Assert two values are identical.
 assert_equal <- function(actual, expected, message = NULL) {
   if (is.null(message)) {
     message <- sprintf("expected '%s' but got '%s'", expected, actual)
@@ -79,14 +45,6 @@ assert_equal <- function(actual, expected, message = NULL) {
   assert(identical(actual, expected), message)
 }
 
-#' Get the numId and ilvl from the paragraph at the current cursor position.
-#'
-#' Returns a list with $num_id and $ilvl as character strings.
-#' Both are NA if the paragraph is not a list item.
-#'
-#' XPath used:
-#'   "w:pPr/w:numPr/w:numId" — navigate: paragraph props -> numPr -> numId
-#'   "w:pPr/w:numPr/w:ilvl"  — navigate: paragraph props -> numPr -> ilvl
 get_cursor_num_pr <- function(x) {
   node <- docx_current_block_xml(x)
   list(
@@ -96,9 +54,7 @@ get_cursor_num_pr <- function(x) {
 }
 
 
-# ==============================================================================
-# TESTS
-# ==============================================================================
+# ---- Tests -------------------------------------------------------------------
 
 cat("\nRunning officer_list_helpers tests\n")
 cat(strrep("-", 60), "\n")
@@ -111,17 +67,10 @@ run_test("list_add_par creates bullet items", {
   doc <- list_add_par(doc, "Item one", list_type = "bullet")
   doc <- list_add_par(doc, "Item two", list_type = "bullet")
 
-  # The cursor is on "Item two". It should have a <w:numPr>.
   np <- get_cursor_num_pr(doc)
   assert(!is.na(np$num_id), "paragraph should have a numId")
   assert_equal(np$ilvl, "0")
 
-  # numbering.xml should contain a bullet format definition.
-  #
-  # XPath breakdown:
-  #   w:abstractNum                    — find abstractNum elements
-  #   /w:lvl                           — their lvl children
-  #   /w:numFmt[@w:val='bullet']       — that have numFmt with val="bullet"
   num_doc <- .read_numbering_xml(doc)
   bullet_fmts <- xml_find_all(
     num_doc,
@@ -142,7 +91,6 @@ run_test("list_add_par creates decimal items", {
   assert(!is.na(np$num_id), "paragraph should have a numId")
   assert_equal(np$ilvl, "0")
 
-  # Check for decimal format in numbering.xml.
   num_doc <- .read_numbering_xml(doc)
   decimal_fmts <- xml_find_all(
     num_doc,
@@ -160,10 +108,8 @@ run_test("ilvl parameter sets correct indent level", {
   doc <- list_add_par(doc, "Level 1", list_type = "bullet", ilvl = 1L)
   doc <- list_add_par(doc, "Level 2", list_type = "bullet", ilvl = 2L)
 
-  # Cursor is on "Level 2".
   assert_equal(get_cursor_num_pr(doc)$ilvl, "2")
 
-  # Move back and check each level.
   doc <- cursor_backward(doc)
   assert_equal(get_cursor_num_pr(doc)$ilvl, "1")
 
@@ -180,24 +126,13 @@ run_test("list_end causes numbering restart", {
   doc <- list_add_par(doc, "B", list_type = "decimal")
   num_id_before <- get_cursor_num_pr(doc)$num_id
 
-  # End this list.
   doc <- list_end(doc)
-
-  # Start a new decimal list — should get a DIFFERENT numId.
   doc <- list_add_par(doc, "C", list_type = "decimal")
   num_id_after <- get_cursor_num_pr(doc)$num_id
 
-  assert(
-    num_id_before != num_id_after,
-    sprintf("numIds should differ after restart (both were %s)", num_id_before)
-  )
+  assert(num_id_before != num_id_after,
+         sprintf("numIds should differ (both were %s)", num_id_before))
 
-  # The new <w:num> should have a <w:startOverride> element.
-  #
-  # XPath breakdown:
-  #   w:num[@w:numId='X']                — find the num with our new ID
-  #   /w:lvlOverride                     — its lvlOverride child
-  #   /w:startOverride[@w:val='1']       — the startOverride with val=1
   num_doc <- .read_numbering_xml(doc)
   xpath <- sprintf(
     "w:num[@w:numId='%s']/w:lvlOverride/w:startOverride[@w:val='1']",
@@ -215,14 +150,11 @@ run_test("switching list types auto-restarts", {
   doc <- list_add_par(doc, "Bullet", list_type = "bullet")
   bullet_id <- get_cursor_num_pr(doc)$num_id
 
-  # Switching to decimal should use a different numId automatically.
   doc <- list_add_par(doc, "Number", list_type = "decimal")
   decimal_id <- get_cursor_num_pr(doc)$num_id
 
-  assert(
-    bullet_id != decimal_id,
-    "bullet and decimal should have different numIds"
-  )
+  assert(bullet_id != decimal_id,
+         "bullet and decimal should have different numIds")
 })
 
 
@@ -230,17 +162,12 @@ run_test("switching list types auto-restarts", {
 
 run_test("custom paragraph style coexists with list formatting", {
   doc <- read_docx()
-
-  # "heading 2" exists in officer's default template.
   doc <- list_add_par(doc, "Styled bullet", style = "heading 2",
                       list_type = "bullet")
 
   node <- docx_current_block_xml(doc)
-
-  # The paragraph should have BOTH a style reference AND a numPr.
-  # XPath "w:pPr/w:pStyle" finds the style element.
   pstyle <- xml_attr(xml_find_first(node, "w:pPr/w:pStyle"), "val")
-  assert(!is.na(pstyle), "paragraph should have a pStyle")
+  assert(!is.na(pstyle), "paragraph should have a style")
 
   np <- get_cursor_num_pr(doc)
   assert(!is.na(np$num_id), "paragraph should also have numPr")
@@ -251,9 +178,6 @@ run_test("custom paragraph style coexists with list formatting", {
 
 run_test("list_add_fpar works with formatted text", {
   doc <- read_docx()
-
-  # fpar() creates a paragraph with mixed formatting.
-  # ftext() creates one run (text chunk) with specific properties.
   formatted <- fpar(
     ftext("Bold part", prop = fp_text(bold = TRUE)),
     ftext(" and normal part")
@@ -270,7 +194,6 @@ run_test("list_add_fpar works with formatted text", {
 
 run_test("list_add_blocks numbers every paragraph", {
   doc <- read_docx()
-
   items <- block_list(
     fpar(ftext("First")),
     fpar(ftext("Second")),
@@ -278,7 +201,6 @@ run_test("list_add_blocks numbers every paragraph", {
   )
   doc <- list_add_blocks(doc, items, list_type = "decimal")
 
-  # Cursor is on "Third". All three should share the same numId.
   np3 <- get_cursor_num_pr(doc)
   assert(!is.na(np3$num_id), "third paragraph should have numPr")
 
@@ -290,39 +212,32 @@ run_test("list_add_blocks numbers every paragraph", {
   np1 <- get_cursor_num_pr(doc)
   assert(!is.na(np1$num_id), "first paragraph should have numPr")
 
-  # All three share the same numId — one continuous list.
   assert_equal(np1$num_id, np2$num_id)
   assert_equal(np2$num_id, np3$num_id)
 })
 
 
-# ---------- 9. Round-trip (save and reload) ----------
+# ---------- 9. Round-trip ----------
 
 run_test("document round-trips through save and reload", {
   doc <- read_docx()
   doc <- list_add_par(doc, "Bullet", list_type = "bullet")
   doc <- list_add_par(doc, "Number", list_type = "decimal")
 
-  # Save to a temp file.
   tf <- tempfile(fileext = ".docx")
   print(doc, target = tf)
-
-  # Reload. If our XML is malformed, read_docx() will error.
   doc2 <- read_docx(tf)
   summary <- docx_summary(doc2)
   assert(nrow(summary) >= 2, "reloaded doc should have at least 2 paragraphs")
-
   unlink(tf)
 })
 
 
-# ---------- 10. list_inspect smoke test ----------
+# ---------- 10. list_inspect ----------
 
 run_test("list_inspect runs without error", {
   doc <- read_docx()
   doc <- list_add_par(doc, "Item", list_type = "bullet")
-
-  # Capture output to keep test output clean.
   output <- capture.output(list_inspect(doc))
   assert(length(output) > 0, "should produce output")
   assert(any(grepl("bullet", output)), "should mention 'bullet'")
@@ -331,47 +246,196 @@ run_test("list_inspect runs without error", {
 
 # ---------- 11. Same-type continuation ----------
 
-run_test("consecutive same-type calls share numId (no restart)", {
+run_test("consecutive same-type calls share numId", {
   doc <- read_docx()
   doc <- list_add_par(doc, "One",   list_type = "decimal")
   id1 <- get_cursor_num_pr(doc)$num_id
-
   doc <- list_add_par(doc, "Two",   list_type = "decimal")
   id2 <- get_cursor_num_pr(doc)$num_id
-
   doc <- list_add_par(doc, "Three", list_type = "decimal")
   id3 <- get_cursor_num_pr(doc)$num_id
 
-  # All three use the same numId — they're one continuous list.
   assert_equal(id1, id2)
   assert_equal(id2, id3)
 })
 
 
-# ---------- 12. list_end is safe to call anywhere ----------
+# ---------- 12. list_end is idempotent ----------
 
 run_test("list_end is idempotent and safe", {
   doc <- read_docx()
-
-  # Before any list — should not crash.
   doc <- list_end(doc)
-
   doc <- list_add_par(doc, "Item", list_type = "bullet")
-
-  # Multiple times — should not crash.
   doc <- list_end(doc)
   doc <- list_end(doc)
-
-  # Should still work.
   doc <- list_add_par(doc, "New item", list_type = "bullet")
   np <- get_cursor_num_pr(doc)
   assert(!is.na(np$num_id), "should still work after multiple list_end calls")
 })
 
 
-# ==============================================================================
-# SUMMARY
-# ==============================================================================
+# ---------- 13. list_setup with tab_pos ----------
+
+run_test("list_setup with tab_pos produces flush-left abstractNum", {
+  doc <- read_docx()
+  doc <- list_setup(doc, tab_pos = 360L)
+  doc <- list_add_par(doc, "Flush bullet", list_type = "bullet")
+
+  # Check that the abstractNum has w:ind with left="0" and a tab stop.
+  num_doc <- .read_numbering_xml(doc)
+  abs_nodes <- xml_find_all(num_doc, "w:abstractNum")
+
+  # Our bullet abstractNum is one of the last ones added.
+  # Find the one with bullet format that has left="0".
+  found_flush <- FALSE
+  for (node in abs_nodes) {
+    lvl0 <- xml_find_first(node, "w:lvl[@w:ilvl='0']")
+    if (inherits(lvl0, "xml_missing")) next
+
+    fmt <- xml_attr(xml_find_first(lvl0, "w:numFmt"), "val")
+    if (fmt != "bullet") next
+
+    ind <- xml_find_first(lvl0, "w:pPr/w:ind")
+    left_val <- xml_attr(ind, "left")
+    first_val <- xml_attr(ind, "firstLine")
+
+    tab <- xml_find_first(lvl0, "w:pPr/w:tabs/w:tab")
+    if (inherits(tab, "xml_missing")) next
+
+    tab_val <- xml_attr(tab, "pos")
+
+    if (left_val == "0" && first_val == "0" && tab_val == "360") {
+      found_flush <- TRUE
+      break
+    }
+  }
+  assert(found_flush,
+         "should have bullet abstractNum with left=0, firstLine=0, tab=360")
+})
+
+
+# ---------- 14. tab_pos sub-levels have correct indents ----------
+
+run_test("tab_pos sub-levels use multiples of tab_pos", {
+  doc <- read_docx()
+  doc <- list_setup(doc, tab_pos = 360L)
+  doc <- list_add_par(doc, "Level 0", list_type = "bullet", ilvl = 0L)
+  doc <- list_add_par(doc, "Level 1", list_type = "bullet", ilvl = 1L)
+
+  # Check level 1 in the abstractNum: left should be 360, tab should be 720.
+  num_doc <- .read_numbering_xml(doc)
+  abs_nodes <- xml_find_all(num_doc, "w:abstractNum")
+
+  found <- FALSE
+  for (node in abs_nodes) {
+    lvl1 <- xml_find_first(node, "w:lvl[@w:ilvl='1']")
+    if (inherits(lvl1, "xml_missing")) next
+
+    fmt <- xml_attr(xml_find_first(lvl1, "w:numFmt"), "val")
+    if (fmt != "bullet") next
+
+    ind <- xml_find_first(lvl1, "w:pPr/w:ind")
+    left_val <- xml_attr(ind, "left")
+
+    tab <- xml_find_first(lvl1, "w:pPr/w:tabs/w:tab")
+    if (inherits(tab, "xml_missing")) next
+    tab_val <- xml_attr(tab, "pos")
+
+    if (left_val == "360" && tab_val == "720") {
+      found <- TRUE
+      break
+    }
+  }
+  assert(found, "level 1 should have left=360, tab=720")
+})
+
+
+# ---------- 15. Default mode has standard hanging indent ----------
+
+run_test("default mode (no list_setup) uses hanging indent", {
+  doc <- read_docx()
+  doc <- list_add_par(doc, "Standard bullet", list_type = "bullet")
+
+  num_doc <- .read_numbering_xml(doc)
+  abs_nodes <- xml_find_all(num_doc, "w:abstractNum")
+
+  found_hanging <- FALSE
+  for (node in abs_nodes) {
+    lvl0 <- xml_find_first(node, "w:lvl[@w:ilvl='0']")
+    if (inherits(lvl0, "xml_missing")) next
+
+    fmt <- xml_attr(xml_find_first(lvl0, "w:numFmt"), "val")
+    if (fmt != "bullet") next
+
+    ind <- xml_find_first(lvl0, "w:pPr/w:ind")
+    left_val <- xml_attr(ind, "left")
+    hang_val <- xml_attr(ind, "hanging")
+
+    if (!is.na(left_val) && left_val == "720" &&
+        !is.na(hang_val) && hang_val == "360") {
+      found_hanging <- TRUE
+      break
+    }
+  }
+  assert(found_hanging,
+         "default mode should have left=720, hanging=360")
+})
+
+
+# ---------- 16. list_setup warns if called after list_add ----------
+
+run_test("list_setup warns if called after list activity", {
+  doc <- read_docx()
+  doc <- list_add_par(doc, "Item", list_type = "bullet")
+
+  # Calling list_setup after list_add should produce a warning.
+  warned <- FALSE
+  tryCatch(
+    {
+      doc <- withCallingHandlers(
+        list_setup(doc, tab_pos = 360L),
+        warning = function(w) {
+          warned <<- TRUE
+          invokeRestart("muffleWarning")
+        }
+      )
+    }
+  )
+  assert(warned, "list_setup after list_add should warn")
+})
+
+
+# ---------- 17. tab_pos round-trip ----------
+
+run_test("tab_pos document round-trips without corruption", {
+  doc <- read_docx()
+  doc <- list_setup(doc, tab_pos = 360L)
+  doc <- list_add_par(doc, "Flush bullet", list_type = "bullet")
+  doc <- list_add_par(doc, "Flush number", list_type = "decimal")
+
+  tf <- tempfile(fileext = ".docx")
+  print(doc, target = tf)
+  doc2 <- read_docx(tf)
+  s <- docx_summary(doc2)
+  assert(nrow(s) >= 2, "reloaded doc should have at least 2 paragraphs")
+  unlink(tf)
+})
+
+
+# ---------- 18. list_inspect shows tab info in flush mode ----------
+
+run_test("list_inspect shows tab info for flush-left mode", {
+  doc <- read_docx()
+  doc <- list_setup(doc, tab_pos = 360L)
+  doc <- list_add_par(doc, "Item", list_type = "bullet")
+
+  output <- capture.output(list_inspect(doc))
+  assert(any(grepl("tab=", output)), "inspect output should show tab info")
+  assert(any(grepl("firstLine=", output)), "inspect output should show firstLine")
+})
+
+
+# ---- Summary -----------------------------------------------------------------
 
 cat(strrep("-", 60), "\n")
 cat(sprintf("\n%d / %d tests passed.\n", pass_count, test_count))
