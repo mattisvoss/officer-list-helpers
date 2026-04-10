@@ -13,10 +13,11 @@
 #   2. BACKGROUND: How lists work in .docx
 #   3. BACKGROUND: The tools we use (xml2 and XPath)
 #   4. BACKGROUND: How officer fits in
-#   5. CODE: Constants
-#   6. CODE: XML string builders (pure functions, no side effects)
-#   7. CODE: Numbering.xml file management (reads/writes the XML file)
-#   8. CODE: Public API (the functions you actually call)
+#   5. BACKGROUND: Indentation and the tab_pos approach
+#   6. CODE: Constants
+#   7. CODE: XML string builders (pure functions, no side effects)
+#   8. CODE: Numbering.xml file management (reads/writes the XML file)
+#   9. CODE: Public API (the functions you actually call)
 #
 #
 # QUICK START
@@ -33,6 +34,12 @@
 #   doc <- list_add_par(doc, "Step one", list_type = "decimal")
 #   doc <- list_add_par(doc, "Step two", list_type = "decimal")
 #   print(doc, target = "output.docx")
+#
+#   # For styles with borders/fills, use flush-left mode:
+#   doc <- read_docx()
+#   doc <- list_setup(doc, tab_pos = 360L)
+#   doc <- list_add_par(doc, "Bullet inside a bordered style",
+#                       style = "My Bordered Style", list_type = "bullet")
 #
 #
 # ==========================
@@ -79,9 +86,8 @@
 #     within a single paragraph.
 #
 #   PARAGRAPH PROPERTIES (<w:pPr>)
-#     Settings that apply to the whole paragraph: which style to use,
-#     text alignment, indentation, and — crucially for us — list numbering.
-#     This is where we inject <w:numPr> to make a paragraph a list item.
+#     Settings that apply to the whole paragraph: style, alignment,
+#     indentation, and — crucially for us — list numbering.
 #
 # The "w:" prefix on every tag is an XML NAMESPACE. All Word XML elements
 # belong to the namespace:
@@ -90,9 +96,7 @@
 #
 # The "w:" is just a shorthand alias for that long URL. Think of it like a
 # module prefix — it says "this element is defined by the Word spec, not by
-# some other XML format." Every tool that reads or writes these files needs
-# to know about this namespace, which is why you'll see it referenced
-# throughout this code.
+# some other XML format."
 #
 #
 # ==========================
@@ -185,102 +189,80 @@
 #   as_xml_document(string)      Parse an XML string into a document object.
 #   xml_find_all(doc, xpath)     Find ALL nodes matching an XPath query.
 #   xml_find_first(doc, xpath)   Find the FIRST node matching an XPath query.
-#                                Returns a special "xml_missing" object if
-#                                nothing matches (check with inherits()).
 #   xml_attr(node, name)         Get the value of an attribute. Returns NA if
 #                                the attribute doesn't exist.
 #   xml_add_child(parent, child) Insert a child node INSIDE a parent element.
-#   xml_add_sibling(node, sib)   Insert a node NEXT TO an existing node
-#                                (as a sibling, not inside it).
+#   xml_add_sibling(node, sib)   Insert a node NEXT TO an existing node.
 #
-# XPATH is a query language for finding things in XML. It works like file
-# paths, but for XML elements instead of folders. Here are the patterns
-# used in this file:
+# XPath is a query language for finding things in XML. Quick primer:
 #
-#   "w:abstractNum"
-#       Find all <w:abstractNum> elements (direct children of the root).
-#
-#   "w:abstractNum/w:lvl"
-#       Find <w:lvl> elements that are children of <w:abstractNum>.
-#       The "/" means "child of" — like a folder separator.
-#
-#   "w:num[@w:numId='3']"
-#       Find the <w:num> element whose numId attribute equals 3.
-#       The [@...] syntax filters by attribute value.
-#
-#   "w:pPr/w:numPr/w:numId"
-#       Navigate a chain: pPr -> numPr -> numId.
-#       Each "/" goes one level deeper into the tree.
-#
-#   "w:abstractNum/w:lvl/w:numFmt[@w:val='bullet']"
-#       Find numFmt elements with val="bullet" that are inside lvl elements
-#       that are inside abstractNum elements. Combines path navigation
-#       with attribute filtering.
-#
-#   "w:num[@w:numId='3']/w:lvlOverride/w:startOverride[@w:val='1']"
-#       Find startOverride elements (with val=1) inside lvlOverride, inside
-#       a specific num (with numId=3). This is how we verify that a restart
-#       override was correctly created.
-#
-# That's all the XPath you need to understand this code.
+#   "w:abstractNum"                   Find all <w:abstractNum> children
+#   "w:abstractNum/w:lvl"             Find <w:lvl> inside <w:abstractNum>
+#   "w:num[@w:numId='3']"             Find <w:num> where numId = 3
+#   "w:pPr/w:numPr/w:numId"          Navigate: pPr -> numPr -> numId
 #
 #
 # ==========================
 # 4. HOW OFFICER FITS IN
 # ==========================
 #
-# The 'officer' R package provides a high-level API for building .docx files.
-# When you call read_docx(), officer unzips the template .docx into a
-# temporary directory and gives you an R object (class "rdocx") that
-# represents the document in memory.
+# officer::read_docx() unzips the .docx into a temp directory and gives you
+# an R object (class "rdocx"). x$package_dir is the path to that temp folder.
 #
-# Key officer functions and concepts used in this file:
+# Our strategy: use officer to add paragraphs normally, then immediately
+# modify the XML of the paragraph officer just created to add <w:numPr>.
+# Your paragraph style is always preserved — we layer list formatting on top.
 #
-#   read_docx(path)
-#       Open a .docx template. Returns an rdocx object. The template is
-#       unzipped into a temp folder — x$package_dir is the path to that
-#       folder. This is where we find word/numbering.xml.
 #
-#   body_add_par(x, text, style, pos)
-#       Add a plain text paragraph to the document. The cursor moves to
-#       the new paragraph.
+# ==========================
+# 5. INDENTATION AND THE TAB_POS APPROACH
+# ==========================
 #
-#   body_add_fpar(x, fpar_obj, style, pos)
-#       Add a formatted paragraph. fpar() and ftext() let you mix bold,
-#       italic, and other formatting within a single paragraph.
+# By default, list items are indented: the bullet/number hangs to the left,
+# and the text is pushed rightward. This is the standard Word behaviour:
 #
-#   body_add_blocks(x, block_list, pos)
-#       Add multiple formatted paragraphs at once.
+#   STANDARD (default):
+#     <w:ind w:left="720" w:hanging="360"/>
 #
-#   docx_current_block_xml(x)
-#       Get the XML node at the current cursor position. The cursor always
-#       points at the most recently added paragraph. This is how we grab
-#       the paragraph XML to inject <w:numPr>.
+#     |          • Bullet text starts here
+#     |            ↑ left=720 (text indent from margin)
+#     |          ↑ hanging=360 (bullet hangs back from text)
+#     |        ↑ bullet is at 720-360 = 360 twips from margin
 #
-#   cursor_backward(x) / cursor_forward(x)
-#       Move the cursor to the previous/next paragraph. We use these in
-#       list_add_blocks() to tag each paragraph individually.
+# This works fine for normal paragraphs, but if your paragraph style has
+# a BORDER or FILL (background colour), the indent pushes the content area
+# rightward, creating an ugly gap between the border/fill edge and the text.
 #
-#   print(x, target = path)
-#       Save the document. Officer re-zips the temp directory (including
-#       our modified numbering.xml) into a .docx file.
+# The fix: FLUSH-LEFT mode. Set the paragraph indent to zero and use a
+# TAB STOP to create the gap between the bullet/number and the text:
 #
-# OUR STRATEGY:
+#   FLUSH-LEFT (tab_pos mode):
+#     <w:ind w:left="0" w:firstLine="0"/>
+#     <w:tabs><w:tab w:val="left" w:pos="360"/></w:tabs>
+#     <w:suff w:val="tab"/>
 #
-#   1. Let officer add the paragraph normally (preserving your custom style).
-#   2. Immediately grab the XML of that paragraph via docx_current_block_xml().
-#   3. Find its <w:pPr> and add <w:numPr> inside it.
+#     |• → Bullet text starts here
+#     |↑    ↑ tab stop at pos=360 pushes text inward
+#     |↑ bullet at left margin (position 0)
+#     |↑ border/fill edge — no gap!
 #
-#   This means your paragraph style is always preserved — we just layer
-#   list formatting on top. officer doesn't know or care about our changes;
-#   it just includes them when it saves the file.
+# The <w:suff w:val="tab"/> element tells Word: "after the bullet/number,
+# insert a tab character (not a space)." The tab stop then controls where
+# the text begins. The paragraph indent is zero, so borders and fills
+# extend all the way to the margin.
+#
+# To enable flush-left mode, call list_setup(doc, tab_pos = 360L) before
+# adding any list items. The tab_pos value (in twips) controls the gap.
+# 360 twips = 0.25 inch is a good default.
+#
+# Sub-levels (ilvl > 0) in flush-left mode use multiples of tab_pos for
+# both the indent and the tab stop, giving a clean nested appearance
+# without breaking the border/fill.
 #
 # ==============================================================================
 
 
 # ---- Dependency check --------------------------------------------------------
-# These packages must be loaded before sourcing this file.
-# We check rather than call library() to avoid side effects.
 
 if (!requireNamespace("officer", quietly = TRUE)) {
   stop("Package 'officer' is required. Install it with: install.packages('officer')")
@@ -291,94 +273,100 @@ if (!requireNamespace("xml2", quietly = TRUE)) {
 
 
 # ==============================================================================
-# SECTION 5: CONSTANTS
+# SECTION 6: CONSTANTS
 # ==============================================================================
 
-# The XML namespace for all Word document elements.
-# This is the long URL that the "w:" prefix stands for in every .docx XML file.
 OOXML_NS <- "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
-
-# When building XML strings to be parsed by xml2, we need to declare the
-# namespace inline. This string gets pasted into our XML fragments so that
-# xml2's parser knows what "w:" means.
 OOXML_NS_DECL <- sprintf('xmlns:w="%s"', OOXML_NS)
-
-# Bullet characters that cycle across indent levels: •, ◦, ▪, •, ◦, ▪, ...
-# These match Word's built-in bullet defaults.
 BULLET_GLYPHS <- c("\u2022", "\u25e6", "\u25aa")
 
 
 # ==============================================================================
-# SECTION 6: XML STRING BUILDERS
-#
-# These functions build XML strings. They are PURE FUNCTIONS — they don't
-# read or write any files, they don't modify any state, and they don't depend
-# on any external context. They just take parameters and return strings.
-#
-# This makes them easy to test, easy to understand, and easy to modify if
-# you want to change the list formatting (e.g. different bullet glyphs or
-# different indentation).
+# SECTION 7: XML STRING BUILDERS
 # ==============================================================================
 
 #' Build the XML for one indent level of a list format definition.
 #'
-#' Each list format (abstractNum) has up to 9 indent levels (0 through 8).
-#' This function builds the XML for one of those levels.
-#'
 #' @param ilvl Integer 0-8. Which indent level this defines.
 #' @param list_type "bullet" or "decimal".
+#' @param tab_pos Integer or NULL. If NULL (default), uses standard hanging
+#'   indent. If an integer (twips), uses flush-left mode with a tab stop.
 #' @return An XML string: '<w:lvl w:ilvl="0">...</w:lvl>'.
-.build_lvl_xml <- function(ilvl, list_type) {
-  # Each level indents 0.5 inch (720 twips) further than the last.
-  # Level 0 = 720 twips from left margin, level 1 = 1440 twips, etc.
-  # The "hanging" indent (360 twips) is how far the bullet/number hangs
-  # to the left of the text — this is what creates the visual alignment
-  # where the bullet sticks out and the text is neatly indented.
-  left_indent <- 720L * (ilvl + 1L)
-
+.build_lvl_xml <- function(ilvl, list_type, tab_pos = NULL) {
   if (list_type == "bullet") {
     fmt <- "bullet"
-    # Cycle through bullet glyphs: level 0 = •, level 1 = ◦, level 2 = ▪,
-    # then it repeats: level 3 = •, level 4 = ◦, etc.
     text <- BULLET_GLYPHS[ilvl %% 3L + 1L]
   } else {
     fmt <- "decimal"
-    # The %N token means "insert the counter for level N".
-    # %1. at level 0 produces "1.", "2.", "3."
-    # %2. at level 1 produces "1.", "2.", "3." (independently)
     text <- sprintf("%%%d.", ilvl + 1L)
   }
 
-  sprintf(
-    paste0(
-      '<w:lvl w:ilvl="%d">',
-        '<w:start w:val="1"/>',
-        '<w:numFmt w:val="%s"/>',
-        '<w:lvlText w:val="%s"/>',
-        '<w:lvlJc w:val="left"/>',
-        '<w:pPr>',
-          '<w:ind w:left="%d" w:hanging="360"/>',
-        '</w:pPr>',
-      '</w:lvl>'
-    ),
-    ilvl, fmt, text, left_indent
-  )
+  if (is.null(tab_pos)) {
+    # STANDARD MODE: hanging indent.
+    # Each level indents 0.5 inch (720 twips) further.
+    # The bullet/number "hangs" 360 twips to the left of the text.
+    left_indent <- 720L * (ilvl + 1L)
+
+    sprintf(
+      paste0(
+        '<w:lvl w:ilvl="%d">',
+          '<w:start w:val="1"/>',
+          '<w:numFmt w:val="%s"/>',
+          '<w:lvlText w:val="%s"/>',
+          '<w:lvlJc w:val="left"/>',
+          '<w:pPr>',
+            '<w:ind w:left="%d" w:hanging="360"/>',
+          '</w:pPr>',
+        '</w:lvl>'
+      ),
+      ilvl, fmt, text, left_indent
+    )
+  } else {
+    # FLUSH-LEFT MODE: zero indent, tab stop for bullet-to-text gap.
+    #
+    # For ilvl 0: indent = 0, tab at tab_pos
+    # For ilvl 1: indent = tab_pos, tab at tab_pos * 2
+    # For ilvl 2: indent = tab_pos * 2, tab at tab_pos * 3
+    #
+    # This gives nested levels a staircase effect while keeping ilvl 0
+    # flush with the left margin (preserving borders/fills).
+    level_indent <- as.integer(tab_pos) * ilvl
+    level_tab <- as.integer(tab_pos) * (ilvl + 1L)
+
+    sprintf(
+      paste0(
+        '<w:lvl w:ilvl="%d">',
+          '<w:start w:val="1"/>',
+          '<w:numFmt w:val="%s"/>',
+          '<w:lvlText w:val="%s"/>',
+          '<w:suff w:val="tab"/>',
+          '<w:lvlJc w:val="left"/>',
+          '<w:pPr>',
+            '<w:ind w:left="%d" w:firstLine="0"/>',
+            '<w:tabs><w:tab w:val="left" w:pos="%d"/></w:tabs>',
+          '</w:pPr>',
+        '</w:lvl>'
+      ),
+      ilvl, fmt, text, level_indent, level_tab
+    )
+  }
 }
 
 
 #' Build a complete <w:abstractNum> — a list format template.
 #'
-#' An abstractNum defines HOW a list looks (bullet glyphs, decimal numbers,
-#' indentation) across all 9 possible indent levels. It does NOT create an
-#' actual list in the document — for that, you need a <w:num> instance that
-#' references this abstractNum.
-#'
-#' @param abstract_num_id Integer. Unique ID (must not collide with existing).
+#' @param abstract_num_id Integer. Unique ID.
 #' @param list_type "bullet" or "decimal".
-#' @return A complete XML string ready to be injected into numbering.xml.
-.build_abstract_num_xml <- function(abstract_num_id, list_type) {
-  # Build all 9 levels (0 through 8).
-  lvls <- vapply(0:8, .build_lvl_xml, character(1), list_type = list_type)
+#' @param tab_pos Integer or NULL. Passed through to .build_lvl_xml.
+#' @return A complete XML string for injection into numbering.xml.
+.build_abstract_num_xml <- function(abstract_num_id, list_type, tab_pos = NULL) {
+  lvls <- vapply(
+    0:8,
+    .build_lvl_xml,
+    character(1),
+    list_type = list_type,
+    tab_pos = tab_pos
+  )
 
   sprintf(
     paste0(
@@ -394,26 +382,13 @@ BULLET_GLYPHS <- c("\u2022", "\u25e6", "\u25aa")
 
 #' Build a <w:num> — an instance of a list.
 #'
-#' A <w:num> is a specific, concrete list in the document. Paragraphs point
-#' to it via their <w:numPr> element. It references an <w:abstractNum> for
-#' its visual formatting.
-#'
-#' You can have multiple <w:num> instances pointing to the same abstractNum.
-#' Each one maintains its own counter. This is how you create two separate
-#' "1. 2. 3." lists that look identical but number independently.
-#'
 #' @param num_id Integer. Unique ID for this list instance.
 #' @param abstract_num_id Integer. Which format template to use.
-#' @param restart Logical. If TRUE, adds <w:lvlOverride>/<w:startOverride>
-#'   to force the counter back to 1. Use this when creating a new list that
-#'   should start fresh despite sharing a format with a previous list.
+#' @param restart Logical. If TRUE, adds <w:startOverride> to reset counter.
 #' @return A complete XML string.
 .build_num_xml <- function(num_id, abstract_num_id, restart = FALSE) {
   override <- ""
   if (restart) {
-    # This element tells Word: "ignore the running counter from any previous
-    # lists that use this same abstractNum — start fresh at 1."
-    # Without this, some renderers (LibreOffice, WPS) continue counting.
     override <- paste0(
       '<w:lvlOverride w:ilvl="0">',
         '<w:startOverride w:val="1"/>',
@@ -430,16 +405,10 @@ BULLET_GLYPHS <- c("\u2022", "\u25e6", "\u25aa")
 
 #' Build a <w:numPr> node — the element that makes a paragraph a list item.
 #'
-#' This gets added inside a paragraph's <w:pPr> (paragraph properties).
-#' It says: "this paragraph belongs to list instance [num_id] at indent
-#' level [ilvl]."
-#'
-#' @param num_id Integer. Which <w:num> instance this paragraph belongs to.
-#' @param ilvl Integer. Indent level (0 = top, 1 = sub-item, 2 = sub-sub).
-#' @return An xml2 node object (not a string), ready for xml_add_child().
+#' @param num_id Integer. Which list instance.
+#' @param ilvl Integer. Indent level (0 = top, 1 = sub-item, ...).
+#' @return An xml2 node object ready for xml_add_child().
 .build_num_pr_node <- function(num_id, ilvl) {
-  # We return a parsed xml2 node (not a string) because xml_add_child()
-  # expects a node object when adding children to an existing XML tree.
   xml2::read_xml(sprintf(
     '<w:numPr xmlns:w="%s"><w:ilvl w:val="%d"/><w:numId w:val="%d"/></w:numPr>',
     OOXML_NS, as.integer(ilvl), as.integer(num_id)
@@ -448,61 +417,27 @@ BULLET_GLYPHS <- c("\u2022", "\u25e6", "\u25aa")
 
 
 # ==============================================================================
-# SECTION 7: NUMBERING.XML FILE MANAGEMENT
-#
-# These functions read and write word/numbering.xml inside the temporary
-# directory where officer unpacked the .docx template. They also manage the
-# tracking state stored on x$.list_state.
-#
-# The state tracks:
-#   - Which abstractNum IDs we created (so we can make new num instances)
-#   - Which num instance is currently active for each list type
-#   - Which list type was used most recently (for restart detection)
-#   - A counter for allocating new unique num IDs
+# SECTION 8: NUMBERING.XML FILE MANAGEMENT
 # ==============================================================================
 
 #' Read numbering.xml from the document's temp directory.
-#'
-#' officer::read_docx() unzips the .docx template into a temp folder.
-#' x$package_dir is the path to that folder. numbering.xml lives at
-#' word/numbering.xml inside it.
-#'
-#' @param x An rdocx object.
-#' @return An xml2 document object representing numbering.xml.
 .read_numbering_xml <- function(x) {
   xml2::read_xml(file.path(x$package_dir, "word", "numbering.xml"))
 }
 
-
 #' Write numbering.xml back to the document's temp directory.
-#'
-#' After modifying the XML in memory, we write it back so that officer
-#' includes our changes when it saves the final .docx.
-#'
-#' @param x An rdocx object.
-#' @param doc An xml2 document object (the modified numbering.xml).
 .write_numbering_xml <- function(x, doc) {
   xml2::write_xml(doc, file = file.path(x$package_dir, "word", "numbering.xml"))
 }
 
-
 #' Find the next available IDs in numbering.xml.
-#'
-#' Both abstractNum and num elements need unique integer IDs. This reads
-#' all existing IDs in the file and returns values that won't collide.
-#'
-#' @param doc An xml2 document (numbering.xml).
-#' @return A list: $abstract_num_id and $num_id (both integers).
 .next_available_ids <- function(doc) {
-  # XPath "w:abstractNum" finds all <w:abstractNum> elements.
-  # xml_attr(..., "abstractNumId") extracts the ID from each one.
   abs_ids <- as.integer(
     xml2::xml_attr(xml2::xml_find_all(doc, "w:abstractNum"), "abstractNumId")
   )
   num_ids <- as.integer(
     xml2::xml_attr(xml2::xml_find_all(doc, "w:num"), "numId")
   )
-
   list(
     abstract_num_id = max(abs_ids) + 1L,
     num_id = max(num_ids) + 1L
@@ -512,50 +447,29 @@ BULLET_GLYPHS <- c("\u2022", "\u25e6", "\u25aa")
 
 #' Set up the list numbering system for a document.
 #'
-#' Called automatically the first time you use any list_add_* function.
-#' Creates one bullet and one decimal <w:abstractNum> (format template),
-#' plus one <w:num> instance for each, and stores tracking state on the
-#' document object at x$.list_state.
-#'
-#' THE STATE OBJECT (x$.list_state) contains:
-#'
-#'   abstract_ids    — list(bullet = 10, decimal = 11)
-#'       Which abstractNum ID to use for each list type.
-#'       Set once at init; never changes.
-#'
-#'   current_num_ids — list(bullet = 12, decimal = 13)
-#'       The currently active <w:num> instance for each type.
-#'       Changes every time we restart a list (new instance created).
-#'
-#'   active_type     — "bullet", "decimal", or NULL
-#'       Which list type was used most recently.
-#'       NULL means no list is active (list_end() was called, or we
-#'       haven't started yet). This is how we detect when to restart.
-#'
-#'   next_num_id     — Integer
-#'       Counter for allocating new unique <w:num> IDs.
+#' Called automatically on first list_add_* call, or explicitly via
+#' list_setup(). Creates abstractNum and num definitions in numbering.xml.
 #'
 #' @param x An rdocx object.
+#' @param tab_pos Integer or NULL. If set, uses flush-left mode.
 #' @return The rdocx object with x$.list_state initialized.
-.init_list_state <- function(x) {
+.init_list_state <- function(x, tab_pos = NULL) {
   doc <- .read_numbering_xml(x)
   ids <- .next_available_ids(doc)
 
-  # Allocate IDs for our two format templates and two initial instances.
   bullet_abs_id  <- ids$abstract_num_id
   decimal_abs_id <- ids$abstract_num_id + 1L
   bullet_num_id  <- ids$num_id
   decimal_num_id <- ids$num_id + 1L
 
-  # Inject the two format templates into numbering.xml.
-  # xml_add_sibling() inserts the new node right after the reference node.
+  # Inject the two format templates, passing tab_pos through.
   abs_nodes <- xml2::xml_find_all(doc, "w:abstractNum")
   last_abs <- abs_nodes[[length(abs_nodes)]]
   xml2::xml_add_sibling(last_abs, xml2::as_xml_document(
-    .build_abstract_num_xml(bullet_abs_id, "bullet")
+    .build_abstract_num_xml(bullet_abs_id, "bullet", tab_pos = tab_pos)
   ))
   xml2::xml_add_sibling(last_abs, xml2::as_xml_document(
-    .build_abstract_num_xml(decimal_abs_id, "decimal")
+    .build_abstract_num_xml(decimal_abs_id, "decimal", tab_pos = tab_pos)
   ))
 
   # Inject the two initial list instances.
@@ -568,15 +482,14 @@ BULLET_GLYPHS <- c("\u2022", "\u25e6", "\u25aa")
     .build_num_xml(decimal_num_id, decimal_abs_id)
   ))
 
-  # Write the modified numbering.xml back to disk.
   .write_numbering_xml(x, doc)
 
-  # Store our tracking state on the document object.
   x$.list_state <- list(
     abstract_ids    = list(bullet = bullet_abs_id, decimal = decimal_abs_id),
     current_num_ids = list(bullet = bullet_num_id, decimal = decimal_num_id),
     active_type     = NULL,
-    next_num_id     = decimal_num_id + 1L
+    next_num_id     = decimal_num_id + 1L,
+    tab_pos         = tab_pos
   )
 
   x
@@ -584,9 +497,6 @@ BULLET_GLYPHS <- c("\u2022", "\u25e6", "\u25aa")
 
 
 #' Ensure the list system is initialized. No-op if already done.
-#'
-#' @param x An rdocx object.
-#' @return The rdocx object (with .list_state set if it wasn't already).
 .ensure_init <- function(x) {
   if (is.null(x$.list_state)) {
     x <- .init_list_state(x)
@@ -596,31 +506,19 @@ BULLET_GLYPHS <- c("\u2022", "\u25e6", "\u25aa")
 
 
 #' Create a new list instance (<w:num>) with a restart override.
-#'
-#' Called when we need numbering to restart at 1. The new <w:num> uses the
-#' same format template (abstractNum) as before, but includes
-#' <w:startOverride> to reset the counter.
-#'
-#' @param x An rdocx object with .list_state initialized.
-#' @param list_type "bullet" or "decimal".
-#' @return The rdocx object with updated current_num_ids and next_num_id.
 .restart_num <- function(x, list_type) {
   doc <- .read_numbering_xml(x)
-
-  # Find all <w:num> nodes so we can add our new one after the last.
   num_nodes <- xml2::xml_find_all(doc, "w:num")
 
   new_id <- x$.list_state$next_num_id
   abs_id <- x$.list_state$abstract_ids[[list_type]]
 
-  # Build a <w:num> with restart = TRUE (includes <w:startOverride>).
   xml2::xml_add_sibling(
     num_nodes[[length(num_nodes)]],
     xml2::as_xml_document(.build_num_xml(new_id, abs_id, restart = TRUE))
   )
   .write_numbering_xml(x, doc)
 
-  # Update our tracking state.
   x$.list_state$current_num_ids[[list_type]] <- new_id
   x$.list_state$next_num_id <- new_id + 1L
   x
@@ -628,45 +526,15 @@ BULLET_GLYPHS <- c("\u2022", "\u25e6", "\u25aa")
 
 
 #' Inject <w:numPr> into the paragraph at the current cursor position.
-#'
-#' officer's cursor always points at the most recently added paragraph.
-#' docx_current_block_xml(x) returns the XML node for that paragraph.
-#' We find its <w:pPr> child and add our <w:numPr> inside it.
-#'
-#' @param x An rdocx object (cursor must be on the target paragraph).
-#' @param num_id Integer. Which list instance to reference.
-#' @param ilvl Integer. Indent level (0 = top, 1 = sub-item, etc.)
-#' @return The rdocx object (XML modified in place).
 .inject_num_pr <- function(x, num_id, ilvl) {
-  # Get the XML node for the paragraph officer just added.
   node <- officer::docx_current_block_xml(x)
-
-  # XPath "w:pPr" finds the <w:pPr> child of this paragraph.
-  # Every paragraph has one — officer always creates it.
   ppr <- xml2::xml_find_first(node, "w:pPr")
-
-  # xml_add_child() inserts our <w:numPr> node inside <w:pPr>.
   xml2::xml_add_child(ppr, .build_num_pr_node(num_id, ilvl))
-
   x
 }
 
 
 #' Shared setup logic for all list_add_* functions.
-#'
-#' Handles three things:
-#'   1. Lazy initialization (first call creates the numbering definitions)
-#'   2. Restart detection (type changed, or list_end() was called)
-#'   3. State tracking (records which type is currently active)
-#'
-#' RESTART LOGIC:
-#'   - active_type is NULL → no active list → create new num (restart)
-#'   - active_type != list_type → type changed → create new num (restart)
-#'   - active_type == list_type → same list continues → reuse current num
-#'
-#' @param x An rdocx object.
-#' @param list_type "bullet" or "decimal".
-#' @return A list: $x (updated rdocx) and $num_id (integer to use).
 .prepare_list_item <- function(x, list_type) {
   list_type <- match.arg(list_type, c("bullet", "decimal"))
   x <- .ensure_init(x)
@@ -686,40 +554,62 @@ BULLET_GLYPHS <- c("\u2022", "\u25e6", "\u25aa")
 
 
 # ==============================================================================
-# SECTION 8: PUBLIC API
-#
-# These are the functions you call in your code. Each one follows the same
-# pattern:
-#
-#   1. Call .prepare_list_item() to handle init/restart/state
-#   2. Use an officer function to add the paragraph (preserving your style)
-#   3. Call .inject_num_pr() to add list formatting to that paragraph's XML
-#
-# Your paragraph style is ALWAYS preserved — list formatting is layered on top.
+# SECTION 9: PUBLIC API
 # ==============================================================================
+
+#' Configure list formatting before adding list items.
+#'
+#' Call this ONCE before your first list_add_* call to control how list
+#' items are indented. If you don't call this, standard hanging-indent
+#' mode is used (fine for most cases).
+#'
+#' The main reason to call this: if your paragraph style has BORDERS or
+#' FILLS, the standard indent pushes the content rightward, creating a gap
+#' between the border and the bullet. Flush-left mode fixes this by keeping
+#' the paragraph indent at zero and using a tab stop for the bullet-to-text
+#' gap.
+#'
+#' @param x An rdocx object.
+#' @param tab_pos Integer (twips) or NULL.
+#'   NULL (default) = standard hanging indent (720 twips per level).
+#'   Integer = flush-left mode. The value controls the gap between the
+#'   bullet/number and the text. 360 = 0.25 inch, a good default.
+#' @return The rdocx object with list formatting configured.
+#'
+#' @examples
+#' doc <- read_docx()
+#'
+#' # Standard mode (default) — no need to call list_setup
+#' doc <- list_add_par(doc, "Normal bullet", list_type = "bullet")
+#'
+#' # Flush-left mode — call list_setup first
+#' doc2 <- read_docx()
+#' doc2 <- list_setup(doc2, tab_pos = 360L)
+#' doc2 <- list_add_par(doc2, "Flush bullet", list_type = "bullet")
+list_setup <- function(x, tab_pos = NULL) {
+  if (!is.null(x$.list_state)) {
+    warning("list_setup() must be called before any list_add_* calls. Ignoring.")
+    return(x)
+  }
+  x <- .init_list_state(x, tab_pos = tab_pos)
+  x
+}
+
 
 #' Add a plain text paragraph as a list item.
 #'
-#' Works exactly like officer::body_add_par(), but the paragraph also gets
-#' bullet or numbered list formatting.
-#'
-#' @param x An rdocx object (from officer::read_docx()).
+#' @param x An rdocx object.
 #' @param value Character string. The paragraph text.
-#' @param style Paragraph style name from your template (e.g. "Normal",
-#'   "My Custom Style"). NULL uses the document's default paragraph style.
-#' @param list_type "bullet" for bullet points, "decimal" for numbered lists.
-#' @param ilvl Indent level: 0 = top level, 1 = sub-item, 2 = sub-sub-item.
-#' @param pos Where to insert: "after" (default), "before", or "on".
+#' @param style Paragraph style name. NULL = document default.
+#' @param list_type "bullet" or "decimal".
+#' @param ilvl Indent level: 0 = top, 1 = sub-item, 2 = sub-sub.
+#' @param pos "after" (default), "before", or "on".
 #' @return The modified rdocx object.
 #'
 #' @examples
 #' doc <- read_docx()
 #' doc <- list_add_par(doc, "Buy groceries", list_type = "bullet")
 #' doc <- list_add_par(doc, "Milk",          list_type = "bullet", ilvl = 1L)
-#' doc <- list_add_par(doc, "Eggs",          list_type = "bullet", ilvl = 1L)
-#' doc <- list_end(doc)
-#' doc <- list_add_par(doc, "First step",    list_type = "decimal")
-#' doc <- list_add_par(doc, "Second step",   list_type = "decimal")
 #' print(doc, target = tempfile(fileext = ".docx"))
 list_add_par <- function(x, value, style = NULL, list_type = "bullet",
                          ilvl = 0L, pos = "after") {
@@ -731,28 +621,15 @@ list_add_par <- function(x, value, style = NULL, list_type = "bullet",
 }
 
 
-#' Add a formatted paragraph as a list item.
-#'
-#' Use this when you need mixed formatting within one paragraph — bold words,
-#' italic phrases, hyperlinks, etc. Build your content with officer::fpar()
-#' and officer::ftext().
+#' Add a formatted paragraph (fpar) as a list item.
 #'
 #' @param x An rdocx object.
-#' @param value An fpar object (from officer::fpar()).
-#' @param style Paragraph style name. NULL uses the document default.
+#' @param value An fpar object.
+#' @param style Paragraph style name. NULL = document default.
 #' @param list_type "bullet" or "decimal".
 #' @param ilvl Indent level (default 0).
 #' @param pos "after" (default), "before", or "on".
 #' @return The modified rdocx object.
-#'
-#' @examples
-#' doc <- read_docx()
-#' formatted <- fpar(
-#'   ftext("Important: ", prop = fp_text(bold = TRUE)),
-#'   ftext("remember to buy milk")
-#' )
-#' doc <- list_add_fpar(doc, formatted, list_type = "bullet")
-#' print(doc, target = tempfile(fileext = ".docx"))
 list_add_fpar <- function(x, value, style = NULL, list_type = "bullet",
                           ilvl = 0L, pos = "after") {
   prep <- .prepare_list_item(x, list_type)
@@ -765,34 +642,18 @@ list_add_fpar <- function(x, value, style = NULL, list_type = "bullet",
 
 #' Add multiple formatted paragraphs as list items.
 #'
-#' Each paragraph in the block_list becomes a separate list item. All items
-#' share the same list sequence (continuous numbering, no restart between).
-#'
 #' @param x An rdocx object.
-#' @param blocks A block_list object (from officer::block_list()).
+#' @param blocks A block_list object.
 #' @param list_type "bullet" or "decimal".
 #' @param ilvl Indent level applied to ALL items (default 0).
 #' @param pos "after" (default), "before", or "on".
 #' @return The modified rdocx object.
-#'
-#' @examples
-#' doc <- read_docx()
-#' items <- block_list(
-#'   fpar(ftext("First point")),
-#'   fpar(ftext("Second point")),
-#'   fpar(ftext("Third point"))
-#' )
-#' doc <- list_add_blocks(doc, items, list_type = "decimal")
-#' print(doc, target = tempfile(fileext = ".docx"))
 list_add_blocks <- function(x, blocks, list_type = "bullet",
                             ilvl = 0L, pos = "after") {
   prep <- .prepare_list_item(x, list_type)
   x <- prep$x
   x <- officer::body_add_blocks(x, blocks, pos = pos)
 
-  # body_add_blocks adds multiple paragraphs. The cursor ends up on the last
-  # one. We need to tag EACH paragraph, so we walk backwards, inject numPr
-  # into each, then walk forwards to restore the cursor position.
   n <- length(blocks)
   for (i in seq_len(n)) {
     x <- .inject_num_pr(x, prep$num_id, ilvl)
@@ -800,7 +661,6 @@ list_add_blocks <- function(x, blocks, list_type = "bullet",
       x <- officer::cursor_backward(x)
     }
   }
-  # Restore the cursor to the last paragraph.
   for (i in seq_len(n - 1L)) {
     x <- officer::cursor_forward(x)
   }
@@ -811,25 +671,11 @@ list_add_blocks <- function(x, blocks, list_type = "bullet",
 
 #' End the current list.
 #'
-#' Call this between two list sequences of the SAME type to force the next
-#' one to restart numbering at 1.
-#'
-#' You do NOT need this when switching types. Switching from bullet to
-#' decimal (or vice versa) restarts automatically.
-#'
-#' Safe to call multiple times, or when no list is active.
+#' Call between two same-type lists to force restart. Switching types
+#' restarts automatically. Safe to call anywhere, any number of times.
 #'
 #' @param x An rdocx object.
 #' @return The rdocx object.
-#'
-#' @examples
-#' doc <- read_docx()
-#' doc <- list_add_par(doc, "A", list_type = "decimal")  # renders as 1.
-#' doc <- list_add_par(doc, "B", list_type = "decimal")  # renders as 2.
-#' doc <- list_end(doc)
-#' doc <- list_add_par(doc, "C", list_type = "decimal")  # renders as 1.
-#' doc <- list_add_par(doc, "D", list_type = "decimal")  # renders as 2.
-#' print(doc, target = tempfile(fileext = ".docx"))
 list_end <- function(x) {
   if (!is.null(x$.list_state)) {
     x$.list_state$active_type <- NULL
@@ -838,56 +684,58 @@ list_end <- function(x) {
 }
 
 
-#' Inspect the numbering definitions in a document.
+#' Inspect numbering definitions in a document.
 #'
-#' Prints a readable summary of every list format template (abstractNum)
-#' and list instance (num) in the document. Useful for:
-#'   - Understanding what your template provides out of the box
-#'   - Debugging: seeing what this library has created
-#'   - Learning: seeing the OOXML structure in plain English
+#' Prints a readable summary of every abstractNum and num in the document.
 #'
 #' @param x An rdocx object.
-#' @return NULL (called for the side effect of printing).
-#'
-#' @examples
-#' doc <- read_docx()
-#' doc <- list_add_par(doc, "test", list_type = "bullet")
-#' list_inspect(doc)
+#' @return NULL (called for side effect of printing).
 list_inspect <- function(x) {
   doc <- .read_numbering_xml(x)
 
-  # --- Format templates ---
   cat("=== Format templates (abstractNum) ===\n")
   cat("These define HOW a list looks at each indent level.\n\n")
 
-  # XPath "w:abstractNum" finds all <w:abstractNum> elements in the file.
   abs_nodes <- xml2::xml_find_all(doc, "w:abstractNum")
   for (node in abs_nodes) {
     abs_id <- xml2::xml_attr(node, "abstractNumId")
     cat(sprintf("  abstractNumId = %s\n", abs_id))
-
-    # XPath "w:lvl" finds all <w:lvl> children of this abstractNum.
     lvls <- xml2::xml_find_all(node, "w:lvl")
     for (lvl in lvls) {
-      # XPath "w:numFmt" finds the format element; xml_attr gets its "val".
       fmt  <- xml2::xml_attr(xml2::xml_find_first(lvl, "w:numFmt"), "val")
       text <- xml2::xml_attr(xml2::xml_find_first(lvl, "w:lvlText"), "val")
-      cat(sprintf("    level %s: format = %-10s  display = %s\n",
-                  xml2::xml_attr(lvl, "ilvl"), fmt, text))
+
+      # Show indent info.
+      ind <- xml2::xml_find_first(lvl, "w:pPr/w:ind")
+      left <- xml2::xml_attr(ind, "left")
+      hang <- xml2::xml_attr(ind, "hanging")
+      first <- xml2::xml_attr(ind, "firstLine")
+
+      # Show tab stop if present.
+      tab <- xml2::xml_find_first(lvl, "w:pPr/w:tabs/w:tab")
+      tab_info <- ""
+      if (!inherits(tab, "xml_missing")) {
+        tab_info <- sprintf("  tab=%s", xml2::xml_attr(tab, "pos"))
+      }
+
+      indent_info <- ""
+      if (!is.na(hang)) {
+        indent_info <- sprintf("left=%s hang=%s", left, hang)
+      } else {
+        indent_info <- sprintf("left=%s firstLine=%s", left, first)
+      }
+
+      cat(sprintf("    level %s: format=%-10s display=%-4s %s%s\n",
+                  xml2::xml_attr(lvl, "ilvl"), fmt, text, indent_info, tab_info))
     }
     cat("\n")
   }
 
-  # --- List instances ---
   cat("=== List instances (num) ===\n")
   cat("Each num is an active list. Paragraphs point to these via numId.\n\n")
 
-  # XPath "w:num" finds all <w:num> elements.
   num_nodes <- xml2::xml_find_all(doc, "w:num")
   for (node in num_nodes) {
-    # Check if this num has a restart override.
-    # XPath "w:lvlOverride/w:startOverride" navigates two levels deep.
-    # xml_find_first returns an "xml_missing" object if nothing matches.
     override <- xml2::xml_find_first(node, "w:lvlOverride/w:startOverride")
     restart_note <- ""
     if (!inherits(override, "xml_missing")) {
