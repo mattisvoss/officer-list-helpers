@@ -14,10 +14,11 @@
 #   1. BACKGROUND: HTML fragments in DDI 3.3
 #   2. BACKGROUND: Block vs inline elements
 #   3. BACKGROUND: How this maps to officer
-#   4. CODE: HTML parsing helpers
-#   5. CODE: Inline content collector (recursive)
-#   6. CODE: Block-level dispatcher
-#   7. TESTS
+#   4. BACKGROUND: Line breaks — the subtle problem
+#   5. CODE: HTML parsing helpers
+#   6. CODE: Inline content collector (recursive)
+#   7. CODE: Block-level dispatcher
+#   8. TESTS
 #
 #
 # QUICK START
@@ -111,15 +112,54 @@
 #
 #   fp_text(bold, italic, underlined, ...)  Formatting properties for a run.
 #
+#   run_linebreak()     A special run that inserts a line break WITHIN a
+#                       paragraph (a "soft return" — Shift+Enter in Word).
+#                       This is different from starting a new paragraph.
+#
 # Our conversion pipeline:
 #
 #   HTML fragment
+#     → preserve newlines (convert \n to <br/> before HTML parsing)
 #     → parse with xml2::read_html()
 #     → walk top-level children, grouping consecutive inline nodes
 #       → for each group of inline nodes: collect runs → one fpar → one paragraph
 #       → for each block element: dispatch appropriately (paragraph, list, etc.)
 #         → within blocks, recursively collect inline runs
+#         → <br> tags become run_linebreak() objects
 #     → emit paragraphs via body_add_fpar or list_add_fpar
+#
+#
+# ==============================
+# 4. LINE BREAKS — THE SUBTLE PROBLEM
+# ==============================
+#
+# DDI 3.3 fragments often contain meaningful newlines in raw text:
+#
+#   "First line\nSecond line\nThird line"
+#
+# But xml2::read_html() follows the HTML spec and COLLAPSES all whitespace
+# (including newlines) into single spaces. So "First\nSecond" becomes
+# "First Second" — the line breaks are lost.
+#
+# Our solution: before parsing the HTML, we convert literal newlines in
+# the raw string into <br/> tags. The HTML parser preserves <br/> tags,
+# and our inline collector converts them into officer::run_linebreak()
+# objects, which Word renders as soft returns (Shift+Enter).
+#
+# We use \r?\n → <br/> to handle both Unix (\n) and Windows (\r\n) line
+# endings. This conversion happens BEFORE html parsing, on the raw string.
+#
+# In Word, there are two kinds of "new line":
+#   - PARAGRAPH BREAK (Enter): starts a new <w:p> element. Each paragraph
+#     can have its own style, numbering, etc.
+#   - LINE BREAK / SOFT RETURN (Shift+Enter): inserts a <w:br/> inside
+#     the current paragraph. The text continues on a new line but stays
+#     in the same paragraph with the same style.
+#
+# We use soft returns (run_linebreak) because the newlines in DDI fragments
+# are usually within a single logical block of text, not between separate
+# paragraphs. If the source actually has <p> tags for paragraph breaks,
+# those are handled separately by the block-level dispatcher.
 #
 # ==============================================================================
 
@@ -149,8 +189,24 @@ if (!exists("list_add_fpar", mode = "function")) {
 
 
 # ==============================================================================
-# SECTION 4: HTML PARSING HELPERS
+# SECTION 5: HTML PARSING HELPERS
 # ==============================================================================
+
+#' Convert literal newlines in an HTML string to <br/> tags.
+#'
+#' This must be called BEFORE xml2::read_html(), because the HTML parser
+#' collapses whitespace (including newlines) into single spaces. By
+#' converting \n to <br/> first, we preserve line breaks as elements
+#' that survive parsing.
+#'
+#' Handles both Unix (\n) and Windows (\r\n) line endings.
+#'
+#' @param html_str A raw HTML fragment string.
+#' @return The string with newlines replaced by <br/> tags.
+.preserve_newlines <- function(html_str) {
+  gsub("\r?\n", "<br/>", html_str)
+}
+
 
 #' Wrap an HTML fragment in a full document so xml2 can parse it.
 #'
@@ -159,10 +215,14 @@ if (!exists("list_add_fpar", mode = "function")) {
 #' well-formed document, so we wrap the fragment in <html><body>...</body>
 #' and return the <body> node.
 #'
+#' Newlines in the raw string are converted to <br/> tags before parsing,
+#' so they are preserved in the output.
+#'
 #' @param html_str A string containing an HTML fragment.
 #' @return An xml2 node representing the <body> element.
 wrap_html_fragment <- function(html_str) {
-  wrapped <- paste0("<html><body>", html_str, "</body></html>")
+  preserved <- .preserve_newlines(html_str)
+  wrapped <- paste0("<html><body>", preserved, "</body></html>")
   html_doc <- xml2::read_html(wrapped)
   xml2::xml_find_first(html_doc, ".//body")
 }
@@ -198,17 +258,18 @@ BLOCK_TAGS <- c(
 
 
 # ==============================================================================
-# SECTION 5: INLINE CONTENT COLLECTOR (RECURSIVE)
+# SECTION 6: INLINE CONTENT COLLECTOR (RECURSIVE)
 #
 # This is the core of the formatting logic. It walks the children of an
-# HTML element and builds a flat list of ftext() runs. Formatting
-# accumulates as we descend into nested tags:
+# HTML element and builds a flat list of ftext() and run_linebreak() objects.
+# Formatting accumulates as we descend into nested tags:
 #
 #   <b>bold <i>bold+italic</i></b>
 #
 # When we enter <b>, we set bold=TRUE in the inherited properties.
 # When we then enter <i>, we ADD italic=TRUE to the already-bold properties.
 # When we encounter text, we emit an ftext() with the accumulated properties.
+# When we encounter <br>, we emit a run_linebreak().
 #
 # The result is a flat list of runs — no nesting — which is exactly what
 # officer's fpar() expects.
@@ -264,10 +325,11 @@ props_to_fp_text <- function(props) {
 }
 
 
-#' Recursively collect inline content from an HTML node into ftext runs.
+#' Recursively collect inline content from an HTML node into runs.
 #'
 #' Walks the children of `node`. For each child:
 #'   - Text node → emit ftext with the currently accumulated formatting
+#'   - <br> tag  → emit run_linebreak (a soft return within the paragraph)
 #'   - Inline tag (b, i, em, strong, u, sub, sup) → add its formatting
 #'     to the inherited props, then recurse into its children
 #'   - Unknown tag → recurse into children with unchanged formatting
@@ -276,7 +338,7 @@ props_to_fp_text <- function(props) {
 #' @param node An xml2 node to walk.
 #' @param inherited_props Named list of formatting accumulated from parent
 #'   tags. Starts empty at the top-level call.
-#' @return A flat list of ftext objects (no nesting).
+#' @return A flat list of ftext and run_linebreak objects (no nesting).
 .collect_runs_recursive <- function(node, inherited_props = list()) {
   runs <- list()
   children <- xml2::xml_contents(node)
@@ -293,6 +355,13 @@ props_to_fp_text <- function(props) {
         ))
       }
 
+    } else if (tag == "br") {
+      # --- Line break: emit a run_linebreak(). ---
+      # officer::run_linebreak() produces a <w:br/> element inside the
+      # paragraph, which Word renders as a soft return (Shift+Enter).
+      # The text continues on a new line but stays in the same paragraph.
+      runs <- c(runs, list(officer::run_linebreak()))
+
     } else if (tag %in% names(INLINE_FORMAT_MAP)) {
       # --- Inline formatting tag: merge its properties and recurse. ---
       # For example, if we're inside <b> (inherited has bold=TRUE) and we
@@ -300,14 +369,6 @@ props_to_fp_text <- function(props) {
       new_props <- merge_props(inherited_props, INLINE_FORMAT_MAP[[tag]])
       child_runs <- .collect_runs_recursive(child, new_props)
       runs <- c(runs, child_runs)
-
-    } else if (tag == "br") {
-      # --- Line break: emit a newline run. ---
-      # officer renders "\n" as a line break within a paragraph (soft return),
-      # not a new paragraph.
-      runs <- c(runs, list(
-        officer::ftext("\n", prop = props_to_fp_text(inherited_props))
-      ))
 
     } else {
       # --- Unknown tag: recurse into it without adding any formatting. ---
@@ -328,7 +389,7 @@ props_to_fp_text <- function(props) {
 #' recursive walker and wraps the resulting runs in an fpar().
 #'
 #' @param node An xml2 node (e.g. a <p>, <li>, or text node).
-#' @return An fpar object containing one or more ftext runs.
+#' @return An fpar object containing one or more ftext/run_linebreak runs.
 collect_inline_runs <- function(node) {
   tag <- xml2::xml_name(node)
 
@@ -376,14 +437,15 @@ collect_inline_runs_from_nodes <- function(nodes) {
         runs <- c(runs, list(officer::ftext(text)))
       }
 
+    } else if (tag == "br") {
+      # Line break — emit a run_linebreak().
+      runs <- c(runs, list(officer::run_linebreak()))
+
     } else if (tag %in% names(INLINE_FORMAT_MAP)) {
       # Formatting tag at top level — start with its props and recurse.
       props <- INLINE_FORMAT_MAP[[tag]]
       child_runs <- .collect_runs_recursive(node, props)
       runs <- c(runs, child_runs)
-
-    } else if (tag == "br") {
-      runs <- c(runs, list(officer::ftext("\n")))
 
     } else {
       # Unknown inline tag — recurse with no formatting.
@@ -401,7 +463,7 @@ collect_inline_runs_from_nodes <- function(nodes) {
 
 
 # ==============================================================================
-# SECTION 6: BLOCK-LEVEL DISPATCHER
+# SECTION 7: BLOCK-LEVEL DISPATCHER
 #
 # This function walks the top-level children of the HTML <body> and decides
 # what to do with each one.
@@ -430,6 +492,9 @@ collect_inline_runs_from_nodes <- function(nodes) {
 #' Consecutive inline nodes at the top level (not wrapped in <p>) are
 #' automatically grouped into a single paragraph.
 #'
+#' Literal newlines (\n) in the input are preserved as line breaks (soft
+#' returns) in the Word output.
+#'
 #' @param document An rdocx object.
 #' @param html_str A string of HTML (a fragment, not a full page).
 #' @param style Paragraph style name from your template. NULL = document
@@ -443,13 +508,11 @@ collect_inline_runs_from_nodes <- function(nodes) {
 #' # Wrapped in <p> — works as expected
 #' doc <- body_add_html_fragment(doc, "<p>Hello <b>world</b></p>")
 #'
-#' # NOT wrapped in <p> — also works correctly now
+#' # NOT wrapped in <p> — also works correctly
 #' doc <- body_add_html_fragment(doc, "Hello <b>world</b> and <i>more</i>")
 #'
-#' # Mixed block and inline content
-#' doc <- body_add_html_fragment(doc,
-#'   "intro text <b>bold</b> <p>a paragraph</p> trailing text"
-#' )
+#' # Line breaks are preserved
+#' doc <- body_add_html_fragment(doc, "Line one\nLine two\nLine three")
 #'
 #' print(doc, target = tempfile(fileext = ".docx"))
 body_add_html_fragment <- function(document, html_str, style = NULL) {
@@ -468,12 +531,22 @@ body_add_html_fragment <- function(document, html_str, style = NULL) {
   # --- Helper: flush accumulated inline nodes as a single paragraph ---
   flush_inline <- function() {
     if (length(inline_acc) > 0) {
-      # Check if the accumulated content is only whitespace.
-      combined_text <- trimws(paste0(
-        vapply(inline_acc, function(n) xml2::xml_text(n), character(1)),
-        collapse = ""
-      ))
-      if (nchar(combined_text) > 0) {
+      # Check if the accumulated content has any non-whitespace text
+      # or any <br> elements. Pure whitespace groups are skipped.
+      has_content <- FALSE
+      for (n in inline_acc) {
+        tag <- xml2::xml_name(n)
+        if (tag == "br") {
+          has_content <- TRUE
+          break
+        }
+        text <- trimws(xml2::xml_text(n))
+        if (nchar(text) > 0) {
+          has_content <- TRUE
+          break
+        }
+      }
+      if (has_content) {
         fp <- collect_inline_runs_from_nodes(inline_acc)
         document <<- officer::body_add_fpar(document, fp, style = style)
       }
@@ -576,14 +649,14 @@ body_add_html_fragment <- function(document, html_str, style = NULL) {
 
 
 # ==============================================================================
-# SECTION 7: TESTS
+# SECTION 8: TESTS
 #
 # Run this file directly to execute the tests:
 #
 #   Rscript html_to_officer.R
 #
 # Each test builds a document from an HTML fragment, then inspects the
-# resulting XML to verify the correct structure was produced.
+# resulting XML or docx_summary to verify the correct structure.
 # ==============================================================================
 
 # Only run tests when this file is executed directly (not when sourced).
@@ -641,12 +714,6 @@ if (sys.nframe() == 0L) {
     s
   }
 
-  # --- Helper: count non-empty text paragraphs in a summary ---
-
-  count_text_rows <- function(s) {
-    nrow(s[s$text != "", ])
-  }
-
 
   # ---------- 1. Plain paragraph ----------
 
@@ -666,12 +733,10 @@ if (sys.nframe() == 0L) {
   run_test("bold text stays in same paragraph", {
     s <- html_to_summary("<p>Hello <b>world</b></p>")
     text_rows <- s[s$text != "", ]
-    # "world" should NOT be a separate paragraph.
     assert(
       !any(text_rows$text == "world"),
       "'world' should not be a separate paragraph"
     )
-    # The combined text should appear.
     full_text <- paste(text_rows$text, collapse = " ")
     assert(grepl("Hello", full_text), "should contain 'Hello'")
     assert(grepl("world", full_text), "should contain 'world'")
@@ -899,18 +964,14 @@ if (sys.nframe() == 0L) {
   # ---------- 15. Bare inline tags (no <p> wrapper) ----------
 
   run_test("bare <b> and <i> without <p> become one paragraph", {
-    # This is the bug that was fixed: "Hello <b>world</b>" without a <p>
-    # should produce ONE paragraph, not separate ones.
     s <- html_to_summary("Hello <b>world</b> and <i>more</i>")
     text_rows <- s[s$text != "", ]
 
-    # Should be exactly ONE paragraph (not three).
     assert(
       nrow(text_rows) == 1,
       sprintf("should be 1 paragraph, got %d", nrow(text_rows))
     )
 
-    # The text should contain all parts.
     full_text <- text_rows$text[1]
     assert(grepl("Hello", full_text), "should contain 'Hello'")
     assert(grepl("world", full_text), "should contain 'world'")
@@ -921,8 +982,6 @@ if (sys.nframe() == 0L) {
   # ---------- 16. Inline tags before a block element ----------
 
   run_test("inline before <p> becomes separate paragraph", {
-    # "intro <b>bold</b> <p>paragraph</p>" should produce TWO paragraphs:
-    # one for the inline content, one for the <p>.
     s <- html_to_summary("intro <b>bold</b> <p>paragraph</p>")
     text_rows <- s[s$text != "", ]
 
@@ -934,7 +993,6 @@ if (sys.nframe() == 0L) {
     assert(grepl("bold", full_text), "should contain 'bold'")
     assert(grepl("paragraph", full_text), "should contain 'paragraph'")
 
-    # "bold" should NOT be its own paragraph.
     assert(
       !any(text_rows$text == "bold"),
       "'bold' should be grouped with 'intro', not separate"
@@ -951,8 +1009,6 @@ if (sys.nframe() == 0L) {
     assert(nrow(text_rows) >= 2,
            sprintf("should be at least 2 paragraphs, got %d", nrow(text_rows)))
 
-    # "text" should NOT be its own paragraph — it should be grouped
-    # with "trailing".
     assert(
       !any(text_rows$text == "text"),
       "'text' should be grouped with 'trailing', not separate"
@@ -983,16 +1039,121 @@ if (sys.nframe() == 0L) {
     s <- html_to_summary("start <b>A</b> <p>middle</p> end <i>B</i>")
     text_rows <- s[s$text != "", ]
 
-    # Should be three paragraphs:
-    #   1. "start A" (grouped inline)
-    #   2. "middle" (block)
-    #   3. "end B" (grouped inline)
     assert(nrow(text_rows) >= 3,
            sprintf("should be at least 3 paragraphs, got %d", nrow(text_rows)))
 
-    # None of A, B should be standalone paragraphs.
     assert(!any(text_rows$text == "A"), "'A' should be grouped with 'start'")
     assert(!any(text_rows$text == "B"), "'B' should be grouped with 'end'")
+  })
+
+
+  # ---------- 20. Literal newlines preserved as line breaks ----------
+
+  run_test("literal newlines become line breaks in same paragraph", {
+    # "Line one\nLine two\nLine three" should be ONE paragraph with
+    # two line breaks inside it, not three separate paragraphs.
+    doc <- read_docx()
+    doc <- body_add_html_fragment(doc, "Line one\nLine two\nLine three")
+
+    # Check the XML of the paragraph for <w:br/> elements.
+    # run_linebreak() produces <w:br/> inside a <w:r>.
+    node <- docx_current_block_xml(doc)
+    br_nodes <- xml2::xml_find_all(node, ".//w:br")
+    assert(
+      length(br_nodes) >= 2,
+      sprintf("should have at least 2 <w:br/> elements, got %d",
+              length(br_nodes))
+    )
+
+    # All the text should be in one paragraph, not split across three.
+    tf <- tempfile(fileext = ".docx")
+    print(doc, target = tf)
+    doc2 <- read_docx(tf)
+    s <- docx_summary(doc2)
+    unlink(tf)
+
+    text_rows <- s[s$text != "", ]
+    assert(
+      nrow(text_rows) == 1,
+      sprintf("should be 1 paragraph with line breaks, got %d", nrow(text_rows))
+    )
+  })
+
+
+  # ---------- 21. Newlines inside <p> preserved ----------
+
+  run_test("newlines inside <p> become line breaks", {
+    doc <- read_docx()
+    doc <- body_add_html_fragment(doc, "<p>First\nSecond\nThird</p>")
+
+    node <- docx_current_block_xml(doc)
+    br_nodes <- xml2::xml_find_all(node, ".//w:br")
+    assert(
+      length(br_nodes) >= 2,
+      sprintf("should have at least 2 <w:br/> inside <p>, got %d",
+              length(br_nodes))
+    )
+  })
+
+
+  # ---------- 22. Newlines with formatting preserved ----------
+
+  run_test("newlines inside <b> become line breaks with formatting", {
+    doc <- read_docx()
+    doc <- body_add_html_fragment(doc, "<b>Bold line one\nBold line two</b>")
+
+    node <- docx_current_block_xml(doc)
+    br_nodes <- xml2::xml_find_all(node, ".//w:br")
+    assert(
+      length(br_nodes) >= 1,
+      sprintf("should have at least 1 <w:br/> inside <b>, got %d",
+              length(br_nodes))
+    )
+
+    # All text should be in one paragraph.
+    tf <- tempfile(fileext = ".docx")
+    print(doc, target = tf)
+    doc2 <- read_docx(tf)
+    s <- docx_summary(doc2)
+    unlink(tf)
+
+    text_rows <- s[s$text != "", ]
+    assert(
+      nrow(text_rows) == 1,
+      sprintf("should be 1 paragraph, got %d", nrow(text_rows))
+    )
+  })
+
+
+  # ---------- 23. Explicit <br> tags also work ----------
+
+  run_test("explicit <br> tags produce line breaks", {
+    doc <- read_docx()
+    doc <- body_add_html_fragment(doc, "First<br>Second<br/>Third")
+
+    node <- docx_current_block_xml(doc)
+    br_nodes <- xml2::xml_find_all(node, ".//w:br")
+    assert(
+      length(br_nodes) >= 2,
+      sprintf("should have at least 2 <w:br/> from <br> tags, got %d",
+              length(br_nodes))
+    )
+  })
+
+
+  # ---------- 24. Windows-style \r\n preserved ----------
+
+  run_test("Windows \\r\\n newlines are preserved", {
+    doc <- read_docx()
+    doc <- body_add_html_fragment(doc, "Line one\r\nLine two\r\nLine three")
+
+    node <- docx_current_block_xml(doc)
+    br_nodes <- xml2::xml_find_all(node, ".//w:br")
+    assert(
+      length(br_nodes) >= 2,
+      sprintf("should have at least 2 <w:br/> from \\r\\n, got %d",
+              length(br_nodes))
+    )
   })
 
 
