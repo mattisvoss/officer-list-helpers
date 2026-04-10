@@ -53,6 +53,10 @@
 #     <li>Missing value: <b>-1</b></li>
 #   </ul>
 #
+# Or even bare inline content with no wrapper:
+#
+#   Hello <b>world</b> and <i>more</i>
+#
 # We need to convert these into formatted Word paragraphs using officer.
 #
 #
@@ -68,7 +72,6 @@
 #   <ol>          → a series of numbered list paragraphs (one per <li>)
 #   <h1>..<h6>    → heading paragraphs
 #   <blockquote>  → indented paragraph
-#   bare text     → plain paragraph (text outside any tag)
 #
 # INLINE ELEMENTS create runs WITHIN a paragraph:
 #   <b>, <strong> → bold text
@@ -76,24 +79,22 @@
 #   <u>           → underlined text
 #   <sub>         → subscript
 #   <sup>         → superscript
+#   <br>          → line break within a paragraph
+#   <span>, <a>   → transparent containers (we grab the text)
 #   plain text    → normal text
 #
-# The key insight: a single <p> like this:
+# THE TRICKY PART: inline elements can appear at the top level of a fragment
+# without any <p> wrapper. For example:
 #
-#   <p>Hello <b>bold <i>and italic</i></b> world</p>
+#   Hello <b>world</b> and <i>more</i>
 #
-# becomes ONE paragraph with FOUR runs:
+# This produces three children of <body>: text "Hello ", element <b>, text
+# " and ", element <i>. These must all be collected into ONE paragraph, not
+# dispatched as separate paragraphs.
 #
-#   fpar(
-#     ftext("Hello "),                            # normal
-#     ftext("bold ",   prop = fp_text(bold=TRUE)), # bold
-#     ftext("and italic", prop = fp_text(bold=TRUE, italic=TRUE)), # both
-#     ftext(" world")                              # normal
-#   )
-#
-# Notice that <i> inside <b> INHERITS the bold formatting. This is why
-# the inline collector needs to be recursive — nested tags accumulate
-# formatting properties as you go deeper.
+# Our solution: before dispatching, we GROUP consecutive inline children
+# together. When we hit a block element (or the end), we flush the
+# accumulated inline nodes as a single paragraph.
 #
 #
 # ==============================
@@ -114,11 +115,11 @@
 #
 #   HTML fragment
 #     → parse with xml2::read_html()
-#     → walk block-level elements (p, ul, ol, text)
-#       → for each block, walk inline elements recursively
-#         → build ftext() runs, accumulating formatting from parent tags
-#       → combine runs into one fpar()
-#     → emit fpar as a paragraph (body_add_fpar or list_add_fpar)
+#     → walk top-level children, grouping consecutive inline nodes
+#       → for each group of inline nodes: collect runs → one fpar → one paragraph
+#       → for each block element: dispatch appropriately (paragraph, list, etc.)
+#         → within blocks, recursively collect inline runs
+#     → emit paragraphs via body_add_fpar or list_add_fpar
 #
 # ==============================================================================
 
@@ -164,6 +165,35 @@ wrap_html_fragment <- function(html_str) {
   wrapped <- paste0("<html><body>", html_str, "</body></html>")
   html_doc <- xml2::read_html(wrapped)
   xml2::xml_find_first(html_doc, ".//body")
+}
+
+
+# Tags that are block-level elements. Everything else is treated as inline.
+# When we encounter a block tag at the top level, we flush any accumulated
+# inline content first, then dispatch the block element.
+BLOCK_TAGS <- c(
+  "p", "ul", "ol", "li",
+  "h1", "h2", "h3", "h4", "h5", "h6",
+  "blockquote", "pre",
+  "div", "section", "article",
+  "table", "hr"
+)
+
+
+#' Check if a node is an inline element (not a block element).
+#'
+#' Text nodes and any element not in BLOCK_TAGS are considered inline.
+#' This is used by the dispatcher to group consecutive inline nodes
+#' into a single paragraph.
+#'
+#' @param node An xml2 node.
+#' @return Logical. TRUE if the node is inline content.
+.is_inline <- function(node) {
+  tag <- xml2::xml_name(node)
+  # Text nodes are always inline.
+  if (tag == "text") return(TRUE)
+  # Anything not in the block list is inline.
+  !(tag %in% BLOCK_TAGS)
 }
 
 
@@ -247,12 +277,6 @@ props_to_fp_text <- function(props) {
 #' @param inherited_props Named list of formatting accumulated from parent
 #'   tags. Starts empty at the top-level call.
 #' @return A flat list of ftext objects (no nesting).
-#'
-#' @examples
-#' # Internal use — called by collect_inline_runs():
-#' #   <p>Hello <b>bold <i>both</i></b></p>
-#' # produces:
-#' #   list(ftext("Hello "), ftext("bold ", bold), ftext("both", bold+italic))
 .collect_runs_recursive <- function(node, inherited_props = list()) {
   runs <- list()
   children <- xml2::xml_contents(node)
@@ -326,20 +350,75 @@ collect_inline_runs <- function(node) {
 }
 
 
+#' Collect inline runs from a list of sibling nodes into one fpar.
+#'
+#' This handles the case where inline content appears at the top level
+#' without a <p> wrapper. For example:
+#'
+#'   Hello <b>world</b> and <i>more</i>
+#'
+#' produces a list of nodes: [text "Hello ", <b>, text " and ", <i>].
+#' We need to walk ALL of them and produce ONE fpar with all the runs
+#' combined.
+#'
+#' @param nodes A list of xml2 nodes (all inline).
+#' @return An fpar object.
+collect_inline_runs_from_nodes <- function(nodes) {
+  runs <- list()
+
+  for (node in nodes) {
+    tag <- xml2::xml_name(node)
+
+    if (tag == "text") {
+      # Plain text node.
+      text <- xml2::xml_text(node)
+      if (nchar(text) > 0) {
+        runs <- c(runs, list(officer::ftext(text)))
+      }
+
+    } else if (tag %in% names(INLINE_FORMAT_MAP)) {
+      # Formatting tag at top level — start with its props and recurse.
+      props <- INLINE_FORMAT_MAP[[tag]]
+      child_runs <- .collect_runs_recursive(node, props)
+      runs <- c(runs, child_runs)
+
+    } else if (tag == "br") {
+      runs <- c(runs, list(officer::ftext("\n")))
+
+    } else {
+      # Unknown inline tag — recurse with no formatting.
+      child_runs <- .collect_runs_recursive(node, list())
+      runs <- c(runs, child_runs)
+    }
+  }
+
+  if (length(runs) == 0) {
+    runs <- list(officer::ftext(""))
+  }
+
+  do.call(officer::fpar, runs)
+}
+
+
 # ==============================================================================
 # SECTION 6: BLOCK-LEVEL DISPATCHER
 #
 # This function walks the top-level children of the HTML <body> and decides
-# what to do with each one based on its tag name:
+# what to do with each one.
 #
-#   <p>       → collect inline content → body_add_fpar (one paragraph)
-#   <ul>      → for each <li>: collect inline content → list_add_fpar (bullet)
-#   <ol>      → for each <li>: collect inline content → list_add_fpar (decimal)
-#   <h1>..<h6>→ collect inline content → body_add_fpar with heading style
-#   text node → plain paragraph
+# THE KEY CHALLENGE: inline elements can appear at the top level without a
+# <p> wrapper. We can't just dispatch each child independently — we need to
+# GROUP consecutive inline nodes and emit them as a single paragraph.
 #
-# The key principle: block-level tags create new paragraphs; inline tags
-# within them create runs inside those paragraphs.
+# The algorithm:
+#   1. Walk children left to right
+#   2. If a child is inline, add it to an accumulator list
+#   3. If a child is a block element (or we reach the end):
+#      a. Flush any accumulated inline nodes as one paragraph
+#      b. Dispatch the block element
+#
+# This ensures that "Hello <b>world</b> and <i>more</i>" becomes one
+# paragraph with four runs, not four separate paragraphs.
 # ==============================================================================
 
 #' Convert an HTML fragment into formatted officer paragraphs.
@@ -347,6 +426,9 @@ collect_inline_runs <- function(node) {
 #' Parses the HTML, walks block-level elements, and adds each as a
 #' properly formatted paragraph (or list item) to the document. Inline
 #' formatting (bold, italic, nested combinations) is preserved.
+#'
+#' Consecutive inline nodes at the top level (not wrapped in <p>) are
+#' automatically grouped into a single paragraph.
 #'
 #' @param document An rdocx object.
 #' @param html_str A string of HTML (a fragment, not a full page).
@@ -358,12 +440,15 @@ collect_inline_runs <- function(node) {
 #' @examples
 #' doc <- read_docx()
 #'
+#' # Wrapped in <p> — works as expected
 #' doc <- body_add_html_fragment(doc, "<p>Hello <b>world</b></p>")
+#'
+#' # NOT wrapped in <p> — also works correctly now
+#' doc <- body_add_html_fragment(doc, "Hello <b>world</b> and <i>more</i>")
+#'
+#' # Mixed block and inline content
 #' doc <- body_add_html_fragment(doc,
-#'   "<p>This has <b>bold and <i>bold-italic</i></b> text.</p>"
-#' )
-#' doc <- body_add_html_fragment(doc,
-#'   "<ul><li>First item</li><li><b>Bold</b> second item</li></ul>"
+#'   "intro text <b>bold</b> <p>a paragraph</p> trailing text"
 #' )
 #'
 #' print(doc, target = tempfile(fileext = ".docx"))
@@ -376,98 +461,115 @@ body_add_html_fragment <- function(document, html_str, style = NULL) {
   body_node <- wrap_html_fragment(html_str)
   html_children <- xml2::xml_contents(body_node)
 
+  # We accumulate consecutive inline nodes here. When we hit a block
+  # element (or the end of children), we flush them as one paragraph.
+  inline_acc <- list()
+
+  # --- Helper: flush accumulated inline nodes as a single paragraph ---
+  flush_inline <- function() {
+    if (length(inline_acc) > 0) {
+      # Check if the accumulated content is only whitespace.
+      combined_text <- trimws(paste0(
+        vapply(inline_acc, function(n) xml2::xml_text(n), character(1)),
+        collapse = ""
+      ))
+      if (nchar(combined_text) > 0) {
+        fp <- collect_inline_runs_from_nodes(inline_acc)
+        document <<- officer::body_add_fpar(document, fp, style = style)
+      }
+    }
+    inline_acc <<- list()
+  }
+
+  # --- Walk children, grouping inline nodes and dispatching blocks ---
+
   for (child_node in html_children) {
     tag <- xml2::xml_name(child_node)
 
-    if (tag == "text") {
-      # --- Bare text outside any tag ---
-      text <- trimws(xml2::xml_text(child_node))
-      if (nchar(text) > 0) {
-        document <- officer::body_add_fpar(
-          document,
-          collect_inline_runs(child_node),
-          style = style
-        )
-      }
-
-    } else if (tag == "p") {
-      # --- Paragraph: may contain mixed inline formatting ---
-      # <p>Hello <b>bold</b> and <i>italic</i></p>
-      # → one fpar with four ftext runs.
-      document <- officer::body_add_fpar(
-        document,
-        collect_inline_runs(child_node),
-        style = style
-      )
-
-    } else if (tag == "ul") {
-      # --- Unordered list: each <li> becomes a bullet ---
-      # XPath ".//li" finds all <li> descendants (handles nested <ul> too,
-      # though nested lists would need ilvl support for proper indentation).
-      items <- xml2::xml_find_all(child_node, "./li")
-      for (item in items) {
-        document <- list_add_fpar(
-          document,
-          collect_inline_runs(item),
-          style = style,
-          list_type = "bullet"
-        )
-      }
-      document <- list_end(document)
-
-    } else if (tag == "ol") {
-      # --- Ordered list: each <li> becomes a numbered item ---
-      items <- xml2::xml_find_all(child_node, "./li")
-      for (item in items) {
-        document <- list_add_fpar(
-          document,
-          collect_inline_runs(item),
-          style = style,
-          list_type = "decimal"
-        )
-      }
-      document <- list_end(document)
-
-    } else if (grepl("^h[1-6]$", tag)) {
-      # --- Headings: use officer's heading styles ---
-      # <h1> → "heading 1", <h2> → "heading 2", etc.
-      # These are built into every Word template.
-      level <- as.integer(sub("h", "", tag))
-      heading_style <- paste("heading", level)
-      document <- officer::body_add_fpar(
-        document,
-        collect_inline_runs(child_node),
-        style = heading_style
-      )
-
-    } else if (tag == "blockquote") {
-      # --- Block quote: use the user's style (or default) ---
-      # A more complete implementation could use a "Quote" style if available.
-      document <- officer::body_add_fpar(
-        document,
-        collect_inline_runs(child_node),
-        style = style
-      )
-
-    } else if (tag %in% c("div", "section", "article")) {
-      # --- Container tags: recurse into their children ---
-      # These don't produce paragraphs themselves; they just group content.
-      inner_html <- as.character(xml2::xml_contents(child_node))
-      inner_str <- paste(inner_html, collapse = "")
-      document <- body_add_html_fragment(document, inner_str, style = style)
+    if (.is_inline(child_node)) {
+      # --- Inline node: accumulate it ---
+      # Don't emit yet — wait until we hit a block element or the end.
+      inline_acc <- c(inline_acc, list(child_node))
 
     } else {
-      # --- Unknown block tag: treat as a paragraph ---
-      text <- trimws(xml2::xml_text(child_node))
-      if (nchar(text) > 0) {
+      # --- Block element: flush inline first, then dispatch ---
+      flush_inline()
+
+      if (tag == "p") {
+        # Paragraph: may contain mixed inline formatting.
         document <- officer::body_add_fpar(
           document,
           collect_inline_runs(child_node),
           style = style
         )
+
+      } else if (tag == "ul") {
+        # Unordered list: each <li> becomes a bullet.
+        # XPath "./li" finds direct <li> children.
+        items <- xml2::xml_find_all(child_node, "./li")
+        for (item in items) {
+          document <- list_add_fpar(
+            document,
+            collect_inline_runs(item),
+            style = style,
+            list_type = "bullet"
+          )
+        }
+        document <- list_end(document)
+
+      } else if (tag == "ol") {
+        # Ordered list: each <li> becomes a numbered item.
+        items <- xml2::xml_find_all(child_node, "./li")
+        for (item in items) {
+          document <- list_add_fpar(
+            document,
+            collect_inline_runs(item),
+            style = style,
+            list_type = "decimal"
+          )
+        }
+        document <- list_end(document)
+
+      } else if (grepl("^h[1-6]$", tag)) {
+        # Headings: <h1> → "heading 1", <h2> → "heading 2", etc.
+        level <- as.integer(sub("h", "", tag))
+        heading_style <- paste("heading", level)
+        document <- officer::body_add_fpar(
+          document,
+          collect_inline_runs(child_node),
+          style = heading_style
+        )
+
+      } else if (tag == "blockquote") {
+        document <- officer::body_add_fpar(
+          document,
+          collect_inline_runs(child_node),
+          style = style
+        )
+
+      } else if (tag %in% c("div", "section", "article")) {
+        # Container tags: recurse into their children.
+        inner_html <- as.character(xml2::xml_contents(child_node))
+        inner_str <- paste(inner_html, collapse = "")
+        document <- body_add_html_fragment(document, inner_str, style = style)
+
+      } else {
+        # Unknown block tag: treat as a paragraph.
+        text <- trimws(xml2::xml_text(child_node))
+        if (nchar(text) > 0) {
+          document <- officer::body_add_fpar(
+            document,
+            collect_inline_runs(child_node),
+            style = style
+          )
+        }
       }
     }
   }
+
+  # --- Flush any trailing inline content ---
+  # Handles cases like "Hello <b>world</b>" with no block element after.
+  flush_inline()
 
   document
 }
@@ -539,12 +641,17 @@ if (sys.nframe() == 0L) {
     s
   }
 
+  # --- Helper: count non-empty text paragraphs in a summary ---
+
+  count_text_rows <- function(s) {
+    nrow(s[s$text != "", ])
+  }
+
 
   # ---------- 1. Plain paragraph ----------
 
   run_test("plain <p> becomes one paragraph", {
     s <- html_to_summary("<p>Hello world</p>")
-    # Should be one paragraph (plus the default empty first paragraph).
     text_rows <- s[s$text != "", ]
     assert(nrow(text_rows) >= 1, "should have at least one text row")
     assert(
@@ -554,36 +661,30 @@ if (sys.nframe() == 0L) {
   })
 
 
-  # ---------- 2. Bold formatting ----------
+  # ---------- 2. Bold formatting stays inline ----------
 
   run_test("bold text stays in same paragraph", {
     s <- html_to_summary("<p>Hello <b>world</b></p>")
-    # "Hello " and "world" should be in the SAME paragraph, not two.
     text_rows <- s[s$text != "", ]
-    # With docx_summary, inline formatting is concatenated into one text.
-    assert(
-      any(grepl("Hello world", text_rows$text, fixed = TRUE) |
-          grepl("Hello", text_rows$text, fixed = TRUE)),
-      "should contain the text in one or combined rows"
-    )
-    # Most importantly: there should NOT be a separate paragraph for "world".
+    # "world" should NOT be a separate paragraph.
     assert(
       !any(text_rows$text == "world"),
       "'world' should not be a separate paragraph"
     )
+    # The combined text should appear.
+    full_text <- paste(text_rows$text, collapse = " ")
+    assert(grepl("Hello", full_text), "should contain 'Hello'")
+    assert(grepl("world", full_text), "should contain 'world'")
   })
 
 
   # ---------- 3. Nested bold+italic ----------
 
   run_test("nested <b><i> produces bold-italic runs", {
-    # Test at the fpar level — build the fpar and inspect the runs directly.
     body <- wrap_html_fragment("<p>normal <b>bold <i>both</i></b> end</p>")
     p_node <- xml2::xml_find_first(body, ".//p")
     fp <- collect_inline_runs(p_node)
 
-    # fp is an fpar. Its internal structure contains the runs.
-    # We check it round-trips correctly by adding it to a document.
     doc <- read_docx()
     doc <- body_add_fpar(doc, fp)
     tf <- tempfile(fileext = ".docx")
@@ -592,7 +693,6 @@ if (sys.nframe() == 0L) {
     s <- docx_summary(doc2)
     unlink(tf)
 
-    # The paragraph text should contain all parts concatenated.
     full_text <- paste(s$text[s$text != ""], collapse = " ")
     assert(grepl("normal", full_text), "should contain 'normal'")
     assert(grepl("bold", full_text), "should contain 'bold'")
@@ -618,8 +718,6 @@ if (sys.nframe() == 0L) {
       "<ul><li>Alpha</li><li>Bravo</li></ul>"
     )
 
-    # Check the XML for <w:numPr> on the list paragraphs.
-    # The cursor is on the last paragraph added.
     node <- docx_current_block_xml(doc)
     num_pr <- xml2::xml_find_first(node, "w:pPr/w:numPr/w:numId")
     assert(!inherits(num_pr, "xml_missing"), "last <li> should have numPr")
@@ -638,7 +736,6 @@ if (sys.nframe() == 0L) {
     num_pr <- xml2::xml_find_first(node, "w:pPr/w:numPr/w:numId")
     assert(!inherits(num_pr, "xml_missing"), "last <li> should have numPr")
 
-    # Verify it's a decimal format by checking numbering.xml.
     num_doc <- xml2::read_xml(
       file.path(doc$package_dir, "word", "numbering.xml")
     )
@@ -658,7 +755,6 @@ if (sys.nframe() == 0L) {
       "<ul><li>Normal and <b>bold</b> text</li></ul>"
     )
 
-    # Should be one list item, not two paragraphs.
     tf <- tempfile(fileext = ".docx")
     print(doc, target = tf)
     doc2 <- read_docx(tf)
@@ -666,7 +762,6 @@ if (sys.nframe() == 0L) {
     unlink(tf)
 
     text_rows <- s[s$text != "", ]
-    # "bold" should NOT be a separate paragraph.
     assert(
       !any(text_rows$text == "bold"),
       "'bold' should be inline, not a separate paragraph"
@@ -704,11 +799,9 @@ if (sys.nframe() == 0L) {
 
   run_test("empty string is handled gracefully", {
     doc <- read_docx()
-    # Should not crash.
     doc <- body_add_html_fragment(doc, "")
     doc <- body_add_html_fragment(doc, "   ")
     doc <- body_add_html_fragment(doc, NULL)
-    # Should still be a valid document.
     tf <- tempfile(fileext = ".docx")
     print(doc, target = tf)
     doc2 <- read_docx(tf)
@@ -742,8 +835,6 @@ if (sys.nframe() == 0L) {
     doc <- body_add_html_fragment(doc, html)
     tf <- tempfile(fileext = ".docx")
     print(doc, target = tf)
-
-    # If the XML is malformed, read_docx will error.
     doc2 <- read_docx(tf)
     s <- docx_summary(doc2)
     unlink(tf)
@@ -756,12 +847,10 @@ if (sys.nframe() == 0L) {
   # ---------- 13. Deeply nested formatting ----------
 
   run_test("triple-nested inline tags accumulate formatting", {
-    # <b><i><u>text</u></i></b> should produce bold + italic + underlined.
     body <- wrap_html_fragment("<p><b><i><u>styled</u></i></b></p>")
     p_node <- xml2::xml_find_first(body, ".//p")
     fp <- collect_inline_runs(p_node)
 
-    # Verify by round-tripping.
     doc <- read_docx()
     doc <- body_add_fpar(doc, fp)
     tf <- tempfile(fileext = ".docx")
@@ -781,20 +870,17 @@ if (sys.nframe() == 0L) {
     doc <- body_add_html_fragment(doc,
       "<ol><li>A</li><li>B</li></ol>"
     )
-    # list_end is called internally after each <ol>.
     doc <- body_add_html_fragment(doc,
       "<ol><li>C</li><li>D</li></ol>"
     )
 
-    # The second <ol> should have a different numId (restarted).
     node <- docx_current_block_xml(doc)
     num_id_second <- xml2::xml_attr(
       xml2::xml_find_first(node, "w:pPr/w:numPr/w:numId"), "val"
     )
 
-    # Move back to the first <ol>'s last item.
-    doc <- officer::cursor_backward(doc)  # D -> C
-    doc <- officer::cursor_backward(doc)  # C -> B
+    doc <- officer::cursor_backward(doc)
+    doc <- officer::cursor_backward(doc)
     num_id_first <- xml2::xml_attr(
       xml2::xml_find_first(
         docx_current_block_xml(doc), "w:pPr/w:numPr/w:numId"
@@ -807,6 +893,106 @@ if (sys.nframe() == 0L) {
       sprintf("two <ol> blocks should have different numIds (got %s and %s)",
               num_id_first, num_id_second)
     )
+  })
+
+
+  # ---------- 15. Bare inline tags (no <p> wrapper) ----------
+
+  run_test("bare <b> and <i> without <p> become one paragraph", {
+    # This is the bug that was fixed: "Hello <b>world</b>" without a <p>
+    # should produce ONE paragraph, not separate ones.
+    s <- html_to_summary("Hello <b>world</b> and <i>more</i>")
+    text_rows <- s[s$text != "", ]
+
+    # Should be exactly ONE paragraph (not three).
+    assert(
+      nrow(text_rows) == 1,
+      sprintf("should be 1 paragraph, got %d", nrow(text_rows))
+    )
+
+    # The text should contain all parts.
+    full_text <- text_rows$text[1]
+    assert(grepl("Hello", full_text), "should contain 'Hello'")
+    assert(grepl("world", full_text), "should contain 'world'")
+    assert(grepl("more", full_text), "should contain 'more'")
+  })
+
+
+  # ---------- 16. Inline tags before a block element ----------
+
+  run_test("inline before <p> becomes separate paragraph", {
+    # "intro <b>bold</b> <p>paragraph</p>" should produce TWO paragraphs:
+    # one for the inline content, one for the <p>.
+    s <- html_to_summary("intro <b>bold</b> <p>paragraph</p>")
+    text_rows <- s[s$text != "", ]
+
+    assert(nrow(text_rows) >= 2,
+           sprintf("should be at least 2 paragraphs, got %d", nrow(text_rows)))
+
+    full_text <- paste(text_rows$text, collapse = " ")
+    assert(grepl("intro", full_text), "should contain 'intro'")
+    assert(grepl("bold", full_text), "should contain 'bold'")
+    assert(grepl("paragraph", full_text), "should contain 'paragraph'")
+
+    # "bold" should NOT be its own paragraph.
+    assert(
+      !any(text_rows$text == "bold"),
+      "'bold' should be grouped with 'intro', not separate"
+    )
+  })
+
+
+  # ---------- 17. Inline tags after a block element ----------
+
+  run_test("inline after <p> becomes separate paragraph", {
+    s <- html_to_summary("<p>paragraph</p> trailing <i>text</i>")
+    text_rows <- s[s$text != "", ]
+
+    assert(nrow(text_rows) >= 2,
+           sprintf("should be at least 2 paragraphs, got %d", nrow(text_rows)))
+
+    # "text" should NOT be its own paragraph — it should be grouped
+    # with "trailing".
+    assert(
+      !any(text_rows$text == "text"),
+      "'text' should be grouped with 'trailing', not separate"
+    )
+  })
+
+
+  # ---------- 18. Only inline tags, multiple formatting types ----------
+
+  run_test("<b> then <i> without wrapper become one paragraph", {
+    s <- html_to_summary("<b>bold</b> <i>italic</i>")
+    text_rows <- s[s$text != "", ]
+
+    assert(
+      nrow(text_rows) == 1,
+      sprintf("should be 1 paragraph, got %d", nrow(text_rows))
+    )
+
+    full_text <- text_rows$text[1]
+    assert(grepl("bold", full_text), "should contain 'bold'")
+    assert(grepl("italic", full_text), "should contain 'italic'")
+  })
+
+
+  # ---------- 19. Block between two inline groups ----------
+
+  run_test("inline, then block, then inline = three paragraphs", {
+    s <- html_to_summary("start <b>A</b> <p>middle</p> end <i>B</i>")
+    text_rows <- s[s$text != "", ]
+
+    # Should be three paragraphs:
+    #   1. "start A" (grouped inline)
+    #   2. "middle" (block)
+    #   3. "end B" (grouped inline)
+    assert(nrow(text_rows) >= 3,
+           sprintf("should be at least 3 paragraphs, got %d", nrow(text_rows)))
+
+    # None of A, B should be standalone paragraphs.
+    assert(!any(text_rows$text == "A"), "'A' should be grouped with 'start'")
+    assert(!any(text_rows$text == "B"), "'B' should be grouped with 'end'")
   })
 
 
