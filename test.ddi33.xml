@@ -5,21 +5,29 @@
 
   Statements describe what they are. Questions ask "Is it visible?"
 
-  CHECKLIST:
-    [x] Category (with Agency/ID/Version)
-    [x] CodeList (with versioned codes referencing Categories)
+  CHECKLIST — at least one of each:
+    [x] Category (versioned, with Agency/ID/Version)
+    [x] CodeList (two versions: v1.0.0 and v2.0.0)
     [x] QuestionItem with text response domain
     [x] QuestionItem with code response domain
     [x] QuestionGrid with two dimensions
-    [x] Sequence (main, with ControlConstructReferences)
+    [x] Sequence (main)
     [x] Sequence (nested, referenced by Loop)
     [x] StatementItem (plain text)
     [x] StatementItem (HTML: p, b, i, ol, ul)
     [x] QuestionConstruct referencing QuestionItem
     [x] QuestionConstruct referencing QuestionGrid
+    [x] QuestionConstruct with two versions (v1.0.0 and v1.1.0)
     [x] IfThenElse with condition, Then, Else
     [x] Loop with InitialValue, LoopWhile, StepValue
     [x] Instrument referencing main Sequence
+
+  EDGE CASES:
+    [x] All references use both URN and Agency/ID/Version/TypeOfObject
+    [x] CodeList v2.0.0 references Category v1.0.0 (cross-version)
+    [x] QuestionConstruct exists in two versions; Sequence references v1.1.0
+    [x] Satisfaction CodeList exists in v1.0.0 and v2.0.0; QuestionGrid references v2.0.0
+    [x] Loop references a Sequence which reuses a QuestionConstruct from the main flow
 -->
 <ddi:FragmentInstance
     xmlns:ddi="ddi:instance:3_3"
@@ -33,6 +41,8 @@
 
   <!-- ================================================================== -->
   <!-- CATEGORIES                                                         -->
+  <!-- All categories are v1.0.0. They are stable — CodeLists evolve     -->
+  <!-- around them but the categories themselves don't change.            -->
   <!-- ================================================================== -->
 
   <ddi:Fragment>
@@ -108,6 +118,11 @@
 
   <!-- ================================================================== -->
   <!-- CODE LISTS                                                         -->
+  <!-- The Yes/No list is stable at v1.0.0.                               -->
+  <!-- The Satisfaction list has TWO versions: v1.0.0 (original 4-point)  -->
+  <!-- and v2.0.0 (updated to 5-point with neutral midpoint).            -->
+  <!-- Both are present so the parser can verify version resolution.      -->
+  <!-- The QuestionGrid references v2.0.0.                                -->
   <!-- ================================================================== -->
 
   <ddi:Fragment>
@@ -121,6 +136,9 @@
         <r:Value>1</r:Value>
         <r:CategoryReference>
           <r:URN>urn:ddi:example.org:Category_Yes:1</r:URN>
+          <r:Agency>example.org</r:Agency>
+          <r:ID>Category_Yes</r:ID>
+          <r:Version>1.0.0</r:Version>
           <r:TypeOfObject>Category</r:TypeOfObject>
         </r:CategoryReference>
       </l:Code>
@@ -128,24 +146,31 @@
         <r:Value>2</r:Value>
         <r:CategoryReference>
           <r:URN>urn:ddi:example.org:Category_No:1</r:URN>
+          <r:Agency>example.org</r:Agency>
+          <r:ID>Category_No</r:ID>
+          <r:Version>1.0.0</r:Version>
           <r:TypeOfObject>Category</r:TypeOfObject>
         </r:CategoryReference>
       </l:Code>
     </l:CodeList>
   </ddi:Fragment>
 
+  <!-- Satisfaction scale v1.0.0 — original 4-point (no neutral midpoint) -->
   <ddi:Fragment>
     <l:CodeList>
       <r:URN>urn:ddi:example.org:CodeList_Satisfaction:1</r:URN>
       <r:Agency>example.org</r:Agency>
       <r:ID>CodeList_Satisfaction</r:ID>
-      <r:Version>2.0.0</r:Version>
-      <r:Label><r:Content xml:lang="en">Satisfaction Scale (1-5)</r:Content></r:Label>
-      <r:Description><r:Content xml:lang="en">Five-point Likert scale. Updated in v2.0.0 to add neutral midpoint label.</r:Content></r:Description>
+      <r:Version>1.0.0</r:Version>
+      <r:Label><r:Content xml:lang="en">Satisfaction Scale (1-4)</r:Content></r:Label>
+      <r:Description><r:Content xml:lang="en">Original four-point scale without neutral midpoint. Superseded by v2.0.0.</r:Content></r:Description>
       <l:Code>
         <r:Value>1</r:Value>
         <r:CategoryReference>
           <r:URN>urn:ddi:example.org:Category_VeryDissatisfied:1</r:URN>
+          <r:Agency>example.org</r:Agency>
+          <r:ID>Category_VeryDissatisfied</r:ID>
+          <r:Version>1.0.0</r:Version>
           <r:TypeOfObject>Category</r:TypeOfObject>
         </r:CategoryReference>
       </l:Code>
@@ -153,6 +178,62 @@
         <r:Value>2</r:Value>
         <r:CategoryReference>
           <r:URN>urn:ddi:example.org:Category_Dissatisfied:1</r:URN>
+          <r:Agency>example.org</r:Agency>
+          <r:ID>Category_Dissatisfied</r:ID>
+          <r:Version>1.0.0</r:Version>
+          <r:TypeOfObject>Category</r:TypeOfObject>
+        </r:CategoryReference>
+      </l:Code>
+      <l:Code>
+        <r:Value>3</r:Value>
+        <r:CategoryReference>
+          <r:URN>urn:ddi:example.org:Category_Satisfied:1</r:URN>
+          <r:Agency>example.org</r:Agency>
+          <r:ID>Category_Satisfied</r:ID>
+          <r:Version>1.0.0</r:Version>
+          <r:TypeOfObject>Category</r:TypeOfObject>
+        </r:CategoryReference>
+      </l:Code>
+      <l:Code>
+        <r:Value>4</r:Value>
+        <r:CategoryReference>
+          <r:URN>urn:ddi:example.org:Category_VerySatisfied:1</r:URN>
+          <r:Agency>example.org</r:Agency>
+          <r:ID>Category_VerySatisfied</r:ID>
+          <r:Version>1.0.0</r:Version>
+          <r:TypeOfObject>Category</r:TypeOfObject>
+        </r:CategoryReference>
+      </l:Code>
+    </l:CodeList>
+  </ddi:Fragment>
+
+  <!-- Satisfaction scale v2.0.0 — updated 5-point with neutral midpoint -->
+  <!-- Note: still references the same Category v1.0.0 objects (cross-version) -->
+  <ddi:Fragment>
+    <l:CodeList>
+      <r:URN>urn:ddi:example.org:CodeList_Satisfaction:2</r:URN>
+      <r:Agency>example.org</r:Agency>
+      <r:ID>CodeList_Satisfaction</r:ID>
+      <r:Version>2.0.0</r:Version>
+      <r:Label><r:Content xml:lang="en">Satisfaction Scale (1-5)</r:Content></r:Label>
+      <r:Description><r:Content xml:lang="en">Updated five-point Likert scale. Added neutral midpoint (code 3). This is the current version.</r:Content></r:Description>
+      <l:Code>
+        <r:Value>1</r:Value>
+        <r:CategoryReference>
+          <r:URN>urn:ddi:example.org:Category_VeryDissatisfied:1</r:URN>
+          <r:Agency>example.org</r:Agency>
+          <r:ID>Category_VeryDissatisfied</r:ID>
+          <r:Version>1.0.0</r:Version>
+          <r:TypeOfObject>Category</r:TypeOfObject>
+        </r:CategoryReference>
+      </l:Code>
+      <l:Code>
+        <r:Value>2</r:Value>
+        <r:CategoryReference>
+          <r:URN>urn:ddi:example.org:Category_Dissatisfied:1</r:URN>
+          <r:Agency>example.org</r:Agency>
+          <r:ID>Category_Dissatisfied</r:ID>
+          <r:Version>1.0.0</r:Version>
           <r:TypeOfObject>Category</r:TypeOfObject>
         </r:CategoryReference>
       </l:Code>
@@ -160,6 +241,9 @@
         <r:Value>3</r:Value>
         <r:CategoryReference>
           <r:URN>urn:ddi:example.org:Category_Neutral:1</r:URN>
+          <r:Agency>example.org</r:Agency>
+          <r:ID>Category_Neutral</r:ID>
+          <r:Version>1.0.0</r:Version>
           <r:TypeOfObject>Category</r:TypeOfObject>
         </r:CategoryReference>
       </l:Code>
@@ -167,6 +251,9 @@
         <r:Value>4</r:Value>
         <r:CategoryReference>
           <r:URN>urn:ddi:example.org:Category_Satisfied:1</r:URN>
+          <r:Agency>example.org</r:Agency>
+          <r:ID>Category_Satisfied</r:ID>
+          <r:Version>1.0.0</r:Version>
           <r:TypeOfObject>Category</r:TypeOfObject>
         </r:CategoryReference>
       </l:Code>
@@ -174,6 +261,9 @@
         <r:Value>5</r:Value>
         <r:CategoryReference>
           <r:URN>urn:ddi:example.org:Category_VerySatisfied:1</r:URN>
+          <r:Agency>example.org</r:Agency>
+          <r:ID>Category_VerySatisfied</r:ID>
+          <r:Version>1.0.0</r:Version>
           <r:TypeOfObject>Category</r:TypeOfObject>
         </r:CategoryReference>
       </l:Code>
@@ -201,6 +291,9 @@
       </d:QuestionText>
       <d:TextDomainReference>
         <r:URN>urn:ddi:example.org:TextDomain:1</r:URN>
+        <r:Agency>example.org</r:Agency>
+        <r:ID>TextDomain</r:ID>
+        <r:Version>1.0.0</r:Version>
         <r:TypeOfObject>ManagedTextRepresentation</r:TypeOfObject>
       </d:TextDomainReference>
     </d:QuestionItem>
@@ -223,12 +316,16 @@
       <d:CodeDomain>
         <r:CodeListReference>
           <r:URN>urn:ddi:example.org:CodeList_YesNo:1</r:URN>
+          <r:Agency>example.org</r:Agency>
+          <r:ID>CodeList_YesNo</r:ID>
+          <r:Version>1.0.0</r:Version>
           <r:TypeOfObject>CodeList</r:TypeOfObject>
         </r:CodeListReference>
       </d:CodeDomain>
     </d:QuestionItem>
   </ddi:Fragment>
 
+  <!-- QuestionGrid references Satisfaction v2.0.0 (not v1.0.0) -->
   <ddi:Fragment>
     <d:QuestionGrid>
       <r:URN>urn:ddi:example.org:QuestionGrid_Matrix:1</r:URN>
@@ -240,13 +337,16 @@
       </d:QuestionGridName>
       <d:QuestionText>
         <d:LiteralText>
-          <d:Text xml:lang="en">This is a QuestionGrid with two dimensions (rows from Satisfaction CodeList, columns from Yes/No CodeList). Is it visible?</d:Text>
+          <d:Text xml:lang="en">This is a QuestionGrid with two dimensions. Rows use Satisfaction v2.0.0 (5-point), columns use Yes/No v1.0.0. Is it visible?</d:Text>
         </d:LiteralText>
       </d:QuestionText>
       <d:GridDimension rank="1" displayCode="false" displayLabel="true">
         <d:CodeDomain>
           <r:CodeListReference>
-            <r:URN>urn:ddi:example.org:CodeList_Satisfaction:1</r:URN>
+            <r:URN>urn:ddi:example.org:CodeList_Satisfaction:2</r:URN>
+            <r:Agency>example.org</r:Agency>
+            <r:ID>CodeList_Satisfaction</r:ID>
+            <r:Version>2.0.0</r:Version>
             <r:TypeOfObject>CodeList</r:TypeOfObject>
           </r:CodeListReference>
         </d:CodeDomain>
@@ -255,6 +355,9 @@
         <d:CodeDomain>
           <r:CodeListReference>
             <r:URN>urn:ddi:example.org:CodeList_YesNo:1</r:URN>
+            <r:Agency>example.org</r:Agency>
+            <r:ID>CodeList_YesNo</r:ID>
+            <r:Version>1.0.0</r:Version>
             <r:TypeOfObject>CodeList</r:TypeOfObject>
           </r:CodeListReference>
         </d:CodeDomain>
@@ -279,40 +382,63 @@
 
       <d:ControlConstructReference>
         <r:URN>urn:ddi:example.org:StatementItem_PlainText:1</r:URN>
+        <r:Agency>example.org</r:Agency>
+        <r:ID>StatementItem_PlainText</r:ID>
+        <r:Version>1.0.0</r:Version>
         <r:TypeOfObject>StatementItem</r:TypeOfObject>
       </d:ControlConstructReference>
 
       <d:ControlConstructReference>
         <r:URN>urn:ddi:example.org:StatementItem_WithHTML:1</r:URN>
+        <r:Agency>example.org</r:Agency>
+        <r:ID>StatementItem_WithHTML</r:ID>
+        <r:Version>1.0.0</r:Version>
         <r:TypeOfObject>StatementItem</r:TypeOfObject>
       </d:ControlConstructReference>
 
       <d:ControlConstructReference>
         <r:URN>urn:ddi:example.org:QuestionConstruct_Text:1</r:URN>
+        <r:Agency>example.org</r:Agency>
+        <r:ID>QuestionConstruct_Text</r:ID>
+        <r:Version>1.0.0</r:Version>
         <r:TypeOfObject>QuestionConstruct</r:TypeOfObject>
       </d:ControlConstructReference>
 
+      <!-- References QuestionConstruct_Coded v1.1.0 (not v1.0.0) -->
       <d:ControlConstructReference>
-        <r:URN>urn:ddi:example.org:QuestionConstruct_Coded:1</r:URN>
+        <r:URN>urn:ddi:example.org:QuestionConstruct_Coded:2</r:URN>
+        <r:Agency>example.org</r:Agency>
+        <r:ID>QuestionConstruct_Coded</r:ID>
+        <r:Version>1.1.0</r:Version>
         <r:TypeOfObject>QuestionConstruct</r:TypeOfObject>
       </d:ControlConstructReference>
 
       <d:ControlConstructReference>
         <r:URN>urn:ddi:example.org:IfThenElse_Branch:1</r:URN>
+        <r:Agency>example.org</r:Agency>
+        <r:ID>IfThenElse_Branch</r:ID>
+        <r:Version>1.0.0</r:Version>
         <r:TypeOfObject>IfThenElse</r:TypeOfObject>
       </d:ControlConstructReference>
 
       <d:ControlConstructReference>
         <r:URN>urn:ddi:example.org:Loop_Repeating:1</r:URN>
+        <r:Agency>example.org</r:Agency>
+        <r:ID>Loop_Repeating</r:ID>
+        <r:Version>1.0.0</r:Version>
         <r:TypeOfObject>Loop</r:TypeOfObject>
       </d:ControlConstructReference>
 
       <d:ControlConstructReference>
         <r:URN>urn:ddi:example.org:QuestionConstruct_Grid:1</r:URN>
+        <r:Agency>example.org</r:Agency>
+        <r:ID>QuestionConstruct_Grid</r:ID>
+        <r:Version>1.0.0</r:Version>
         <r:TypeOfObject>QuestionConstruct</r:TypeOfObject>
       </d:ControlConstructReference>
     </d:Sequence>
   </ddi:Fragment>
+
 
   <!-- StatementItem: plain text -->
   <ddi:Fragment>
@@ -329,6 +455,7 @@
       </d:DisplayText>
     </d:StatementItem>
   </ddi:Fragment>
+
 
   <!-- StatementItem: HTML formatted -->
   <ddi:Fragment>
@@ -360,7 +487,8 @@
     </d:StatementItem>
   </ddi:Fragment>
 
-  <!-- QuestionConstructs -->
+
+  <!-- QuestionConstruct: text question (v1.0.0 only) -->
   <ddi:Fragment>
     <d:QuestionConstruct>
       <r:URN>urn:ddi:example.org:QuestionConstruct_Text:1</r:URN>
@@ -370,11 +498,15 @@
       <d:ConstructName><r:String xml:lang="en">AskTextQuestion</r:String></d:ConstructName>
       <r:QuestionReference>
         <r:URN>urn:ddi:example.org:QuestionItem_Text:1</r:URN>
+        <r:Agency>example.org</r:Agency>
+        <r:ID>QuestionItem_Text</r:ID>
+        <r:Version>1.0.0</r:Version>
         <r:TypeOfObject>QuestionItem</r:TypeOfObject>
       </r:QuestionReference>
     </d:QuestionConstruct>
   </ddi:Fragment>
 
+  <!-- QuestionConstruct: coded question v1.0.0 (superseded, kept for history) -->
   <ddi:Fragment>
     <d:QuestionConstruct>
       <r:URN>urn:ddi:example.org:QuestionConstruct_Coded:1</r:URN>
@@ -384,11 +516,36 @@
       <d:ConstructName><r:String xml:lang="en">AskCodedQuestion</r:String></d:ConstructName>
       <r:QuestionReference>
         <r:URN>urn:ddi:example.org:QuestionItem_Coded:1</r:URN>
+        <r:Agency>example.org</r:Agency>
+        <r:ID>QuestionItem_Coded</r:ID>
+        <r:Version>1.0.0</r:Version>
         <r:TypeOfObject>QuestionItem</r:TypeOfObject>
       </r:QuestionReference>
     </d:QuestionConstruct>
   </ddi:Fragment>
 
+  <!-- QuestionConstruct: coded question v1.1.0 (current — referenced by main Sequence) -->
+  <!-- Same QuestionItem reference, but the construct itself was updated -->
+  <ddi:Fragment>
+    <d:QuestionConstruct>
+      <r:URN>urn:ddi:example.org:QuestionConstruct_Coded:2</r:URN>
+      <r:Agency>example.org</r:Agency>
+      <r:ID>QuestionConstruct_Coded</r:ID>
+      <r:Version>1.1.0</r:Version>
+      <d:ConstructName><r:String xml:lang="en">AskCodedQuestion</r:String></d:ConstructName>
+      <r:Label><r:Content xml:lang="en">Updated in v1.1.0 to add response unit</r:Content></r:Label>
+      <d:ResponseUnit>Respondent</d:ResponseUnit>
+      <r:QuestionReference>
+        <r:URN>urn:ddi:example.org:QuestionItem_Coded:1</r:URN>
+        <r:Agency>example.org</r:Agency>
+        <r:ID>QuestionItem_Coded</r:ID>
+        <r:Version>1.0.0</r:Version>
+        <r:TypeOfObject>QuestionItem</r:TypeOfObject>
+      </r:QuestionReference>
+    </d:QuestionConstruct>
+  </ddi:Fragment>
+
+  <!-- QuestionConstruct: grid question -->
   <ddi:Fragment>
     <d:QuestionConstruct>
       <r:URN>urn:ddi:example.org:QuestionConstruct_Grid:1</r:URN>
@@ -398,10 +555,14 @@
       <d:ConstructName><r:String xml:lang="en">AskGridQuestion</r:String></d:ConstructName>
       <r:QuestionReference>
         <r:URN>urn:ddi:example.org:QuestionGrid_Matrix:1</r:URN>
+        <r:Agency>example.org</r:Agency>
+        <r:ID>QuestionGrid_Matrix</r:ID>
+        <r:Version>1.0.0</r:Version>
         <r:TypeOfObject>QuestionGrid</r:TypeOfObject>
       </r:QuestionReference>
     </d:QuestionConstruct>
   </ddi:Fragment>
+
 
   <!-- IfThenElse -->
   <ddi:Fragment>
@@ -421,10 +582,16 @@
       </d:IfCondition>
       <d:ThenConstructReference>
         <r:URN>urn:ddi:example.org:StatementItem_ThenBranch:1</r:URN>
+        <r:Agency>example.org</r:Agency>
+        <r:ID>StatementItem_ThenBranch</r:ID>
+        <r:Version>1.0.0</r:Version>
         <r:TypeOfObject>StatementItem</r:TypeOfObject>
       </d:ThenConstructReference>
       <d:ElseConstructReference>
         <r:URN>urn:ddi:example.org:StatementItem_ElseBranch:1</r:URN>
+        <r:Agency>example.org</r:Agency>
+        <r:ID>StatementItem_ElseBranch</r:ID>
+        <r:Version>1.0.0</r:Version>
         <r:TypeOfObject>StatementItem</r:TypeOfObject>
       </d:ElseConstructReference>
     </d:IfThenElse>
@@ -458,6 +625,7 @@
     </d:StatementItem>
   </ddi:Fragment>
 
+
   <!-- Loop -->
   <ddi:Fragment>
     <d:Loop>
@@ -484,12 +652,17 @@
       </d:StepValue>
       <d:ControlConstructReference>
         <r:URN>urn:ddi:example.org:Sequence_InsideLoop:1</r:URN>
+        <r:Agency>example.org</r:Agency>
+        <r:ID>Sequence_InsideLoop</r:ID>
+        <r:Version>1.0.0</r:Version>
         <r:TypeOfObject>Sequence</r:TypeOfObject>
       </d:ControlConstructReference>
     </d:Loop>
   </ddi:Fragment>
 
+
   <!-- Nested Sequence (inside the Loop) -->
+  <!-- Reuses QuestionConstruct_Text v1.0.0 from the main flow -->
   <ddi:Fragment>
     <d:Sequence>
       <r:URN>urn:ddi:example.org:Sequence_InsideLoop:1</r:URN>
@@ -501,11 +674,18 @@
 
       <d:ControlConstructReference>
         <r:URN>urn:ddi:example.org:StatementItem_InsideLoop:1</r:URN>
+        <r:Agency>example.org</r:Agency>
+        <r:ID>StatementItem_InsideLoop</r:ID>
+        <r:Version>1.0.0</r:Version>
         <r:TypeOfObject>StatementItem</r:TypeOfObject>
       </d:ControlConstructReference>
 
+      <!-- Reuses the same QuestionConstruct from the main Sequence -->
       <d:ControlConstructReference>
         <r:URN>urn:ddi:example.org:QuestionConstruct_Text:1</r:URN>
+        <r:Agency>example.org</r:Agency>
+        <r:ID>QuestionConstruct_Text</r:ID>
+        <r:Version>1.0.0</r:Version>
         <r:TypeOfObject>QuestionConstruct</r:TypeOfObject>
       </d:ControlConstructReference>
     </d:Sequence>
@@ -544,6 +724,9 @@
       <d:TypeOfInstrument>Questionnaire</d:TypeOfInstrument>
       <d:ControlConstructReference>
         <r:URN>urn:ddi:example.org:Sequence_Main:1</r:URN>
+        <r:Agency>example.org</r:Agency>
+        <r:ID>Sequence_Main</r:ID>
+        <r:Version>1.0.0</r:Version>
         <r:TypeOfObject>Sequence</r:TypeOfObject>
       </d:ControlConstructReference>
     </d:Instrument>
