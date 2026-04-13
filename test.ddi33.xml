@@ -1,0 +1,583 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  test_instrument.xml — DDI Lifecycle 3.3 integration test fixture
+
+  A moderately realistic instrument for end-to-end parser testing.
+  Statements describe what they are. Questions ask "Is it visible?"
+
+  CHECKLIST — this file contains at least one of each:
+    [x] CategoryScheme with versioned Categories
+    [x] CodeListScheme with versioned CodeLists referencing Categories
+    [x] QuestionScheme with QuestionItem (text domain)
+    [x] QuestionScheme with QuestionItem (code domain)
+    [x] QuestionScheme with QuestionGrid (two dimensions)
+    [x] ControlConstructScheme with Sequence
+    [x] Sequence referenced by another Sequence (nested)
+    [x] StatementItem (plain text)
+    [x] StatementItem (HTML formatted with p, b, i, ol, ul)
+    [x] QuestionConstruct referencing QuestionItem
+    [x] QuestionConstruct referencing QuestionGrid
+    [x] IfThenElse with condition, Then branch, Else branch
+    [x] Loop with InitialValue, LoopWhile, StepValue
+    [x] InstrumentScheme with Instrument referencing main Sequence
+-->
+<g:ResourcePackage
+    xmlns:ddi="ddi:instance:3_3"
+    xmlns:d="ddi:datacollection:3_3"
+    xmlns:g="ddi:group:3_3"
+    xmlns:l="ddi:logicalproduct:3_3"
+    xmlns:r="ddi:reusable:3_3"
+    xmlns:xhtml="http://www.w3.org/1999/xhtml"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    versionDate="2025-06-01"
+    isMaintainable="true"
+    scopeOfUniqueness="Maintainable">
+
+  <r:URN>urn:ddi:example.org:TestPackage:1</r:URN>
+  <r:Agency>example.org</r:Agency>
+  <r:ID>TestPackage</r:ID>
+  <r:Version>1.0.0</r:Version>
+
+
+  <!-- ================================================================== -->
+  <!-- CATEGORIES                                                         -->
+  <!--                                                                    -->
+  <!-- Categories define the meaning of response options. They live in a  -->
+  <!-- CategoryScheme and are referenced by Codes in a CodeList.          -->
+  <!-- ================================================================== -->
+
+  <l:CategoryScheme versionDate="2025-06-01" isMaintainable="true" scopeOfUniqueness="Maintainable">
+    <r:URN>urn:ddi:example.org:CategoryScheme:1</r:URN>
+    <r:Agency>example.org</r:Agency>
+    <r:ID>CategoryScheme</r:ID>
+    <r:Version>1.0.0</r:Version>
+    <r:Label><r:Content xml:lang="en">Standard response categories</r:Content></r:Label>
+
+    <!-- Yes / No -->
+    <l:Category>
+      <r:URN>urn:ddi:example.org:Category_Yes:1</r:URN>
+      <r:Agency>example.org</r:Agency>
+      <r:ID>Category_Yes</r:ID>
+      <r:Version>1.0.0</r:Version>
+      <r:Label><r:Content xml:lang="en">Yes</r:Content></r:Label>
+    </l:Category>
+
+    <l:Category>
+      <r:URN>urn:ddi:example.org:Category_No:1</r:URN>
+      <r:Agency>example.org</r:Agency>
+      <r:ID>Category_No</r:ID>
+      <r:Version>1.0.0</r:Version>
+      <r:Label><r:Content xml:lang="en">No</r:Content></r:Label>
+    </l:Category>
+
+    <!-- Satisfaction scale -->
+    <l:Category>
+      <r:URN>urn:ddi:example.org:Category_VeryDissatisfied:1</r:URN>
+      <r:Agency>example.org</r:Agency>
+      <r:ID>Category_VeryDissatisfied</r:ID>
+      <r:Version>1.0.0</r:Version>
+      <r:Label><r:Content xml:lang="en">Very dissatisfied</r:Content></r:Label>
+    </l:Category>
+
+    <l:Category>
+      <r:URN>urn:ddi:example.org:Category_Dissatisfied:1</r:URN>
+      <r:Agency>example.org</r:Agency>
+      <r:ID>Category_Dissatisfied</r:ID>
+      <r:Version>1.0.0</r:Version>
+      <r:Label><r:Content xml:lang="en">Dissatisfied</r:Content></r:Label>
+    </l:Category>
+
+    <l:Category>
+      <r:URN>urn:ddi:example.org:Category_Neutral:1</r:URN>
+      <r:Agency>example.org</r:Agency>
+      <r:ID>Category_Neutral</r:ID>
+      <r:Version>1.0.0</r:Version>
+      <r:Label><r:Content xml:lang="en">Neither satisfied nor dissatisfied</r:Content></r:Label>
+    </l:Category>
+
+    <l:Category>
+      <r:URN>urn:ddi:example.org:Category_Satisfied:1</r:URN>
+      <r:Agency>example.org</r:Agency>
+      <r:ID>Category_Satisfied</r:ID>
+      <r:Version>1.0.0</r:Version>
+      <r:Label><r:Content xml:lang="en">Satisfied</r:Content></r:Label>
+    </l:Category>
+
+    <l:Category>
+      <r:URN>urn:ddi:example.org:Category_VerySatisfied:1</r:URN>
+      <r:Agency>example.org</r:Agency>
+      <r:ID>Category_VerySatisfied</r:ID>
+      <r:Version>1.0.0</r:Version>
+      <r:Label><r:Content xml:lang="en">Very satisfied</r:Content></r:Label>
+    </l:Category>
+
+  </l:CategoryScheme>
+
+
+  <!-- ================================================================== -->
+  <!-- CODE LISTS                                                         -->
+  <!--                                                                    -->
+  <!-- CodeLists associate numeric code values with Categories.           -->
+  <!-- They reference the CategoryScheme above.                           -->
+  <!-- ================================================================== -->
+
+  <l:CodeListScheme versionDate="2025-06-01" isMaintainable="true" scopeOfUniqueness="Maintainable">
+    <r:URN>urn:ddi:example.org:CodeListScheme:1</r:URN>
+    <r:Agency>example.org</r:Agency>
+    <r:ID>CodeListScheme</r:ID>
+    <r:Version>1.0.0</r:Version>
+
+    <l:CodeList scopeOfUniqueness="Maintainable">
+      <r:URN>urn:ddi:example.org:CodeList_YesNo:1</r:URN>
+      <r:Agency>example.org</r:Agency>
+      <r:ID>CodeList_YesNo</r:ID>
+      <r:Version>1.0.0</r:Version>
+      <r:Label><r:Content xml:lang="en">Yes / No</r:Content></r:Label>
+      <l:Code>
+        <r:Value>1</r:Value>
+        <r:CategoryReference>
+          <r:URN>urn:ddi:example.org:Category_Yes:1</r:URN>
+          <r:TypeOfObject>Category</r:TypeOfObject>
+        </r:CategoryReference>
+      </l:Code>
+      <l:Code>
+        <r:Value>2</r:Value>
+        <r:CategoryReference>
+          <r:URN>urn:ddi:example.org:Category_No:1</r:URN>
+          <r:TypeOfObject>Category</r:TypeOfObject>
+        </r:CategoryReference>
+      </l:Code>
+    </l:CodeList>
+
+    <l:CodeList scopeOfUniqueness="Maintainable">
+      <r:URN>urn:ddi:example.org:CodeList_Satisfaction:1</r:URN>
+      <r:Agency>example.org</r:Agency>
+      <r:ID>CodeList_Satisfaction</r:ID>
+      <r:Version>2.0.0</r:Version>
+      <r:Label><r:Content xml:lang="en">Satisfaction Scale (1-5)</r:Content></r:Label>
+      <r:Description><r:Content xml:lang="en">Five-point Likert scale for measuring satisfaction. Updated in v2.0.0 to add neutral midpoint label.</r:Content></r:Description>
+      <l:Code>
+        <r:Value>1</r:Value>
+        <r:CategoryReference>
+          <r:URN>urn:ddi:example.org:Category_VeryDissatisfied:1</r:URN>
+          <r:TypeOfObject>Category</r:TypeOfObject>
+        </r:CategoryReference>
+      </l:Code>
+      <l:Code>
+        <r:Value>2</r:Value>
+        <r:CategoryReference>
+          <r:URN>urn:ddi:example.org:Category_Dissatisfied:1</r:URN>
+          <r:TypeOfObject>Category</r:TypeOfObject>
+        </r:CategoryReference>
+      </l:Code>
+      <l:Code>
+        <r:Value>3</r:Value>
+        <r:CategoryReference>
+          <r:URN>urn:ddi:example.org:Category_Neutral:1</r:URN>
+          <r:TypeOfObject>Category</r:TypeOfObject>
+        </r:CategoryReference>
+      </l:Code>
+      <l:Code>
+        <r:Value>4</r:Value>
+        <r:CategoryReference>
+          <r:URN>urn:ddi:example.org:Category_Satisfied:1</r:URN>
+          <r:TypeOfObject>Category</r:TypeOfObject>
+        </r:CategoryReference>
+      </l:Code>
+      <l:Code>
+        <r:Value>5</r:Value>
+        <r:CategoryReference>
+          <r:URN>urn:ddi:example.org:Category_VerySatisfied:1</r:URN>
+          <r:TypeOfObject>Category</r:TypeOfObject>
+        </r:CategoryReference>
+      </l:Code>
+    </l:CodeList>
+
+  </l:CodeListScheme>
+
+
+  <!-- ================================================================== -->
+  <!-- QUESTIONS                                                          -->
+  <!-- ================================================================== -->
+
+  <d:QuestionScheme versionDate="2025-06-01" isMaintainable="true" scopeOfUniqueness="Maintainable">
+    <r:URN>urn:ddi:example.org:QuestionScheme:1</r:URN>
+    <r:Agency>example.org</r:Agency>
+    <r:ID>QuestionScheme</r:ID>
+    <r:Version>1.0.0</r:Version>
+
+    <!-- QuestionItem: text response -->
+    <d:QuestionItem>
+      <r:URN>urn:ddi:example.org:QuestionItem_Text:1</r:URN>
+      <r:Agency>example.org</r:Agency>
+      <r:ID>QuestionItem_Text</r:ID>
+      <r:Version>1.0.0</r:Version>
+      <d:QuestionItemName>
+        <r:String xml:lang="en">respondent_name</r:String>
+      </d:QuestionItemName>
+      <d:QuestionText>
+        <d:LiteralText>
+          <d:Text xml:lang="en">This is a QuestionItem with a text response domain. Is it visible?</d:Text>
+        </d:LiteralText>
+      </d:QuestionText>
+      <d:TextDomainReference>
+        <r:URN>urn:ddi:example.org:TextDomain:1</r:URN>
+        <r:TypeOfObject>ManagedTextRepresentation</r:TypeOfObject>
+      </d:TextDomainReference>
+    </d:QuestionItem>
+
+    <!-- QuestionItem: code response (Yes/No) -->
+    <d:QuestionItem>
+      <r:URN>urn:ddi:example.org:QuestionItem_Coded:1</r:URN>
+      <r:Agency>example.org</r:Agency>
+      <r:ID>QuestionItem_Coded</r:ID>
+      <r:Version>1.0.0</r:Version>
+      <d:QuestionItemName>
+        <r:String xml:lang="en">currently_employed</r:String>
+      </d:QuestionItemName>
+      <d:QuestionText>
+        <d:LiteralText>
+          <d:Text xml:lang="en">This is a QuestionItem with a code response domain referencing the Yes/No CodeList. Is it visible?</d:Text>
+        </d:LiteralText>
+      </d:QuestionText>
+      <d:CodeDomain>
+        <r:CodeListReference>
+          <r:URN>urn:ddi:example.org:CodeList_YesNo:1</r:URN>
+          <r:TypeOfObject>CodeList</r:TypeOfObject>
+        </r:CodeListReference>
+      </d:CodeDomain>
+    </d:QuestionItem>
+
+    <!-- QuestionGrid: satisfaction matrix -->
+    <d:QuestionGrid>
+      <r:URN>urn:ddi:example.org:QuestionGrid_Matrix:1</r:URN>
+      <r:Agency>example.org</r:Agency>
+      <r:ID>QuestionGrid_Matrix</r:ID>
+      <r:Version>1.0.0</r:Version>
+      <d:QuestionGridName>
+        <r:String xml:lang="en">service_satisfaction</r:String>
+      </d:QuestionGridName>
+      <d:QuestionText>
+        <d:LiteralText>
+          <d:Text xml:lang="en">This is a QuestionGrid with two dimensions (rows from Satisfaction CodeList, columns from Yes/No CodeList). Is it visible?</d:Text>
+        </d:LiteralText>
+      </d:QuestionText>
+      <d:GridDimension rank="1" displayCode="false" displayLabel="true">
+        <d:CodeDomain>
+          <r:CodeListReference>
+            <r:URN>urn:ddi:example.org:CodeList_Satisfaction:1</r:URN>
+            <r:TypeOfObject>CodeList</r:TypeOfObject>
+          </r:CodeListReference>
+        </d:CodeDomain>
+      </d:GridDimension>
+      <d:GridDimension rank="2" displayCode="false" displayLabel="true">
+        <d:CodeDomain>
+          <r:CodeListReference>
+            <r:URN>urn:ddi:example.org:CodeList_YesNo:1</r:URN>
+            <r:TypeOfObject>CodeList</r:TypeOfObject>
+          </r:CodeListReference>
+        </d:CodeDomain>
+      </d:GridDimension>
+    </d:QuestionGrid>
+
+  </d:QuestionScheme>
+
+
+  <!-- ================================================================== -->
+  <!-- CONTROL CONSTRUCTS                                                 -->
+  <!-- ================================================================== -->
+
+  <d:ControlConstructScheme versionDate="2025-06-01" isMaintainable="true" scopeOfUniqueness="Maintainable">
+    <r:URN>urn:ddi:example.org:ControlConstructScheme:1</r:URN>
+    <r:Agency>example.org</r:Agency>
+    <r:ID>ControlConstructScheme</r:ID>
+    <r:Version>1.0.0</r:Version>
+
+
+    <!-- ---- Main Sequence ---- -->
+
+    <d:Sequence>
+      <r:URN>urn:ddi:example.org:Sequence_Main:1</r:URN>
+      <r:Agency>example.org</r:Agency>
+      <r:ID>Sequence_Main</r:ID>
+      <r:Version>1.0.0</r:Version>
+      <d:ConstructName><r:String xml:lang="en">MainSequence</r:String></d:ConstructName>
+      <r:Label><r:Content xml:lang="en">Main Survey Flow</r:Content></r:Label>
+
+      <!-- Step 1: plain text statement -->
+      <d:ControlConstructReference>
+        <r:URN>urn:ddi:example.org:StatementItem_PlainText:1</r:URN>
+        <r:TypeOfObject>StatementItem</r:TypeOfObject>
+      </d:ControlConstructReference>
+
+      <!-- Step 2: HTML-formatted statement -->
+      <d:ControlConstructReference>
+        <r:URN>urn:ddi:example.org:StatementItem_WithHTML:1</r:URN>
+        <r:TypeOfObject>StatementItem</r:TypeOfObject>
+      </d:ControlConstructReference>
+
+      <!-- Step 3: text question -->
+      <d:ControlConstructReference>
+        <r:URN>urn:ddi:example.org:QuestionConstruct_Text:1</r:URN>
+        <r:TypeOfObject>QuestionConstruct</r:TypeOfObject>
+      </d:ControlConstructReference>
+
+      <!-- Step 4: coded question -->
+      <d:ControlConstructReference>
+        <r:URN>urn:ddi:example.org:QuestionConstruct_Coded:1</r:URN>
+        <r:TypeOfObject>QuestionConstruct</r:TypeOfObject>
+      </d:ControlConstructReference>
+
+      <!-- Step 5: conditional branch -->
+      <d:ControlConstructReference>
+        <r:URN>urn:ddi:example.org:IfThenElse_Branch:1</r:URN>
+        <r:TypeOfObject>IfThenElse</r:TypeOfObject>
+      </d:ControlConstructReference>
+
+      <!-- Step 6: loop -->
+      <d:ControlConstructReference>
+        <r:URN>urn:ddi:example.org:Loop_Repeating:1</r:URN>
+        <r:TypeOfObject>Loop</r:TypeOfObject>
+      </d:ControlConstructReference>
+
+      <!-- Step 7: grid question -->
+      <d:ControlConstructReference>
+        <r:URN>urn:ddi:example.org:QuestionConstruct_Grid:1</r:URN>
+        <r:TypeOfObject>QuestionConstruct</r:TypeOfObject>
+      </d:ControlConstructReference>
+    </d:Sequence>
+
+
+    <!-- ---- StatementItem: plain text ---- -->
+
+    <d:StatementItem>
+      <r:URN>urn:ddi:example.org:StatementItem_PlainText:1</r:URN>
+      <r:Agency>example.org</r:Agency>
+      <r:ID>StatementItem_PlainText</r:ID>
+      <r:Version>1.0.0</r:Version>
+      <d:ConstructName><r:String xml:lang="en">PlainTextStatement</r:String></d:ConstructName>
+      <d:DisplayText>
+        <d:LiteralText>
+          <d:Text xml:lang="en">This is a plain text StatementItem with no HTML formatting.</d:Text>
+        </d:LiteralText>
+      </d:DisplayText>
+    </d:StatementItem>
+
+
+    <!-- ---- StatementItem: HTML formatted ---- -->
+
+    <d:StatementItem>
+      <r:URN>urn:ddi:example.org:StatementItem_WithHTML:1</r:URN>
+      <r:Agency>example.org</r:Agency>
+      <r:ID>StatementItem_WithHTML</r:ID>
+      <r:Version>1.0.0</r:Version>
+      <d:ConstructName><r:String xml:lang="en">HTMLFormattedStatement</r:String></d:ConstructName>
+      <d:DisplayText>
+        <d:LiteralText>
+          <d:Text xml:lang="en"><![CDATA[<p>This is an HTML-formatted StatementItem. The word <b>BOLD</b> should be bold. The word <i>ITALIC</i> should be italic. The words <b><i>BOLD-ITALIC</i></b> should be both.</p>
+<p>This is a second paragraph within the same StatementItem.</p>
+<p>The following is an ordered list:</p>
+<ol>
+  <li>Ordered list item one.</li>
+  <li>Ordered list item two with <b>BOLD</b> formatting.</li>
+  <li>Ordered list item three with <i>ITALIC</i> formatting.</li>
+</ol>
+<p>The following is an unordered list:</p>
+<ul>
+  <li>Unordered list item one.</li>
+  <li>Unordered list item two with <b>BOLD</b> formatting.</li>
+  <li>Unordered list item three with <i>ITALIC</i> formatting.</li>
+</ul>
+<p>This is the final paragraph after the lists.</p>]]></d:Text>
+        </d:LiteralText>
+      </d:DisplayText>
+    </d:StatementItem>
+
+
+    <!-- ---- QuestionConstructs ---- -->
+
+    <d:QuestionConstruct>
+      <r:URN>urn:ddi:example.org:QuestionConstruct_Text:1</r:URN>
+      <r:Agency>example.org</r:Agency>
+      <r:ID>QuestionConstruct_Text</r:ID>
+      <r:Version>1.0.0</r:Version>
+      <d:ConstructName><r:String xml:lang="en">AskTextQuestion</r:String></d:ConstructName>
+      <r:QuestionReference>
+        <r:URN>urn:ddi:example.org:QuestionItem_Text:1</r:URN>
+        <r:TypeOfObject>QuestionItem</r:TypeOfObject>
+      </r:QuestionReference>
+    </d:QuestionConstruct>
+
+    <d:QuestionConstruct>
+      <r:URN>urn:ddi:example.org:QuestionConstruct_Coded:1</r:URN>
+      <r:Agency>example.org</r:Agency>
+      <r:ID>QuestionConstruct_Coded</r:ID>
+      <r:Version>1.0.0</r:Version>
+      <d:ConstructName><r:String xml:lang="en">AskCodedQuestion</r:String></d:ConstructName>
+      <r:QuestionReference>
+        <r:URN>urn:ddi:example.org:QuestionItem_Coded:1</r:URN>
+        <r:TypeOfObject>QuestionItem</r:TypeOfObject>
+      </r:QuestionReference>
+    </d:QuestionConstruct>
+
+    <d:QuestionConstruct>
+      <r:URN>urn:ddi:example.org:QuestionConstruct_Grid:1</r:URN>
+      <r:Agency>example.org</r:Agency>
+      <r:ID>QuestionConstruct_Grid</r:ID>
+      <r:Version>1.0.0</r:Version>
+      <d:ConstructName><r:String xml:lang="en">AskGridQuestion</r:String></d:ConstructName>
+      <r:QuestionReference>
+        <r:URN>urn:ddi:example.org:QuestionGrid_Matrix:1</r:URN>
+        <r:TypeOfObject>QuestionGrid</r:TypeOfObject>
+      </r:QuestionReference>
+    </d:QuestionConstruct>
+
+
+    <!-- ---- IfThenElse ---- -->
+
+    <d:IfThenElse>
+      <r:URN>urn:ddi:example.org:IfThenElse_Branch:1</r:URN>
+      <r:Agency>example.org</r:Agency>
+      <r:ID>IfThenElse_Branch</r:ID>
+      <r:Version>1.0.0</r:Version>
+      <d:ConstructName><r:String xml:lang="en">ConditionalBranch</r:String></d:ConstructName>
+      <d:IfCondition>
+        <r:Description>
+          <r:Content xml:lang="en">Condition: currently_employed equals 1 (Yes).</r:Content>
+        </r:Description>
+        <r:Command>
+          <r:CommandContent>currently_employed == 1</r:CommandContent>
+        </r:Command>
+      </d:IfCondition>
+      <d:ThenConstructReference>
+        <r:URN>urn:ddi:example.org:StatementItem_ThenBranch:1</r:URN>
+        <r:TypeOfObject>StatementItem</r:TypeOfObject>
+      </d:ThenConstructReference>
+      <d:ElseConstructReference>
+        <r:URN>urn:ddi:example.org:StatementItem_ElseBranch:1</r:URN>
+        <r:TypeOfObject>StatementItem</r:TypeOfObject>
+      </d:ElseConstructReference>
+    </d:IfThenElse>
+
+    <d:StatementItem>
+      <r:URN>urn:ddi:example.org:StatementItem_ThenBranch:1</r:URN>
+      <r:Agency>example.org</r:Agency>
+      <r:ID>StatementItem_ThenBranch</r:ID>
+      <r:Version>1.0.0</r:Version>
+      <d:DisplayText>
+        <d:LiteralText>
+          <d:Text xml:lang="en">This is the THEN branch of the IfThenElse construct.</d:Text>
+        </d:LiteralText>
+      </d:DisplayText>
+    </d:StatementItem>
+
+    <d:StatementItem>
+      <r:URN>urn:ddi:example.org:StatementItem_ElseBranch:1</r:URN>
+      <r:Agency>example.org</r:Agency>
+      <r:ID>StatementItem_ElseBranch</r:ID>
+      <r:Version>1.0.0</r:Version>
+      <d:DisplayText>
+        <d:LiteralText>
+          <d:Text xml:lang="en">This is the ELSE branch of the IfThenElse construct.</d:Text>
+        </d:LiteralText>
+      </d:DisplayText>
+    </d:StatementItem>
+
+
+    <!-- ---- Loop ---- -->
+
+    <d:Loop>
+      <r:URN>urn:ddi:example.org:Loop_Repeating:1</r:URN>
+      <r:Agency>example.org</r:Agency>
+      <r:ID>Loop_Repeating</r:ID>
+      <r:Version>1.0.0</r:Version>
+      <d:ConstructName><r:String xml:lang="en">RepeatingLoop</r:String></d:ConstructName>
+      <r:Label><r:Content xml:lang="en">Loop over household members</r:Content></r:Label>
+      <d:InitialValue>
+        <r:Command>
+          <r:CommandContent>i = 1</r:CommandContent>
+        </r:Command>
+      </d:InitialValue>
+      <d:LoopWhile>
+        <r:Command>
+          <r:CommandContent>i &lt;= household_size</r:CommandContent>
+        </r:Command>
+      </d:LoopWhile>
+      <d:StepValue>
+        <r:Command>
+          <r:CommandContent>i = i + 1</r:CommandContent>
+        </r:Command>
+      </d:StepValue>
+      <d:ControlConstructReference>
+        <r:URN>urn:ddi:example.org:Sequence_InsideLoop:1</r:URN>
+        <r:TypeOfObject>Sequence</r:TypeOfObject>
+      </d:ControlConstructReference>
+    </d:Loop>
+
+
+    <!-- ---- Nested Sequence (inside the Loop) ---- -->
+
+    <d:Sequence>
+      <r:URN>urn:ddi:example.org:Sequence_InsideLoop:1</r:URN>
+      <r:Agency>example.org</r:Agency>
+      <r:ID>Sequence_InsideLoop</r:ID>
+      <r:Version>1.0.0</r:Version>
+      <d:ConstructName><r:String xml:lang="en">SequenceInsideLoop</r:String></d:ConstructName>
+      <r:Label><r:Content xml:lang="en">Nested sequence within the loop</r:Content></r:Label>
+
+      <d:ControlConstructReference>
+        <r:URN>urn:ddi:example.org:StatementItem_InsideLoop:1</r:URN>
+        <r:TypeOfObject>StatementItem</r:TypeOfObject>
+      </d:ControlConstructReference>
+
+      <d:ControlConstructReference>
+        <r:URN>urn:ddi:example.org:QuestionConstruct_Text:1</r:URN>
+        <r:TypeOfObject>QuestionConstruct</r:TypeOfObject>
+      </d:ControlConstructReference>
+    </d:Sequence>
+
+    <d:StatementItem>
+      <r:URN>urn:ddi:example.org:StatementItem_InsideLoop:1</r:URN>
+      <r:Agency>example.org</r:Agency>
+      <r:ID>StatementItem_InsideLoop</r:ID>
+      <r:Version>1.0.0</r:Version>
+      <d:DisplayText>
+        <d:LiteralText>
+          <d:Text xml:lang="en">This is a StatementItem inside a Sequence inside a Loop. If this text appears, nested construct walking is working correctly.</d:Text>
+        </d:LiteralText>
+      </d:DisplayText>
+    </d:StatementItem>
+
+  </d:ControlConstructScheme>
+
+
+  <!-- ================================================================== -->
+  <!-- INSTRUMENT                                                         -->
+  <!-- ================================================================== -->
+
+  <d:InstrumentScheme versionDate="2025-06-01" isMaintainable="true" scopeOfUniqueness="Maintainable">
+    <r:URN>urn:ddi:example.org:InstrumentScheme:1</r:URN>
+    <r:Agency>example.org</r:Agency>
+    <r:ID>InstrumentScheme</r:ID>
+    <r:Version>1.0.0</r:Version>
+
+    <d:Instrument>
+      <r:URN>urn:ddi:example.org:Instrument_Main:1</r:URN>
+      <r:Agency>example.org</r:Agency>
+      <r:ID>Instrument_Main</r:ID>
+      <r:Version>1.0.0</r:Version>
+      <d:InstrumentName><r:String xml:lang="en">TestInstrument</r:String></d:InstrumentName>
+      <r:Label><r:Content xml:lang="en">Test Instrument</r:Content></r:Label>
+      <r:Description>
+        <r:Content xml:lang="en">Integration test instrument covering all major DDI 3.3 construct types.</r:Content>
+      </r:Description>
+      <d:TypeOfInstrument>Questionnaire</d:TypeOfInstrument>
+      <d:ControlConstructReference>
+        <r:URN>urn:ddi:example.org:Sequence_Main:1</r:URN>
+        <r:TypeOfObject>Sequence</r:TypeOfObject>
+      </d:ControlConstructReference>
+    </d:Instrument>
+
+  </d:InstrumentScheme>
+
+</g:ResourcePackage>
