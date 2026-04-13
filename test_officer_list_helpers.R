@@ -166,22 +166,28 @@ run_test("flush-left: numbering definition has zero indent", {
   doc <- list_add_par(doc, "Flush", list_type = "bullet")
 
   # Find our bullet abstractNum — it should have left=0, hanging=0, tab=360.
+  # We avoid XPath attribute filters like [@w:ilvl='0'] because they
+  # require namespace registration. Instead we filter in R.
   num_doc <- .read_numbering_xml(doc)
+  found <- FALSE
   for (node in xml_find_all(num_doc, "w:abstractNum")) {
-    lvl0 <- xml_find_first(node, "w:lvl[@w:ilvl='0']")
-    if (inherits(lvl0, "xml_missing")) next
-    if (xml_attr(xml_find_first(lvl0, "w:numFmt"), "val") != "bullet") next
+    for (lvl in xml_find_all(node, "w:lvl")) {
+      if (xml_attr(lvl, "ilvl") != "0") next
+      if (xml_attr(xml_find_first(lvl, "w:numFmt"), "val") != "bullet") next
 
-    ind <- xml_find_first(lvl0, "w:pPr/w:ind")
-    tab <- xml_find_first(lvl0, "w:pPr/w:tabs/w:tab")
-    if (inherits(tab, "xml_missing")) next
+      ind <- xml_find_first(lvl, "w:pPr/w:ind")
+      tab <- xml_find_first(lvl, "w:pPr/w:tabs/w:tab")
+      if (inherits(tab, "xml_missing")) next
 
-    assert(identical(xml_attr(ind, "left"), "0"), "left should be 0")
-    assert(identical(xml_attr(ind, "hanging"), "0"), "hanging should be 0")
-    assert(identical(xml_attr(tab, "pos"), "360"), "tab should be 360")
-    return(invisible(NULL))  # found and verified
+      assert(identical(xml_attr(ind, "left"), "0"), "left should be 0")
+      assert(identical(xml_attr(ind, "hanging"), "0"), "hanging should be 0")
+      assert(identical(xml_attr(tab, "pos"), "360"), "tab should be 360")
+      found <- TRUE
+      break
+    }
+    if (found) break
   }
-  stop("did not find flush-left bullet abstractNum")
+  assert(found, "did not find flush-left bullet abstractNum")
 })
 
 
