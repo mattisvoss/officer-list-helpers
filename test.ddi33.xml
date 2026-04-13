@@ -1,59 +1,41 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
   test_instrument.xml — DDI Lifecycle 3.3 integration test fixture
+  FragmentInstance style (flat fragments, as produced by Colectica and DDI REST APIs)
 
-  A moderately realistic instrument for end-to-end parser testing.
   Statements describe what they are. Questions ask "Is it visible?"
 
-  CHECKLIST — this file contains at least one of each:
-    [x] CategoryScheme with versioned Categories
-    [x] CodeListScheme with versioned CodeLists referencing Categories
-    [x] QuestionScheme with QuestionItem (text domain)
-    [x] QuestionScheme with QuestionItem (code domain)
-    [x] QuestionScheme with QuestionGrid (two dimensions)
-    [x] ControlConstructScheme with Sequence
-    [x] Sequence referenced by another Sequence (nested)
+  CHECKLIST:
+    [x] Category (with Agency/ID/Version)
+    [x] CodeList (with versioned codes referencing Categories)
+    [x] QuestionItem with text response domain
+    [x] QuestionItem with code response domain
+    [x] QuestionGrid with two dimensions
+    [x] Sequence (main, with ControlConstructReferences)
+    [x] Sequence (nested, referenced by Loop)
     [x] StatementItem (plain text)
-    [x] StatementItem (HTML formatted with p, b, i, ol, ul)
+    [x] StatementItem (HTML: p, b, i, ol, ul)
     [x] QuestionConstruct referencing QuestionItem
     [x] QuestionConstruct referencing QuestionGrid
-    [x] IfThenElse with condition, Then branch, Else branch
+    [x] IfThenElse with condition, Then, Else
     [x] Loop with InitialValue, LoopWhile, StepValue
-    [x] InstrumentScheme with Instrument referencing main Sequence
+    [x] Instrument referencing main Sequence
 -->
-<g:ResourcePackage
+<ddi:FragmentInstance
     xmlns:ddi="ddi:instance:3_3"
     xmlns:d="ddi:datacollection:3_3"
     xmlns:g="ddi:group:3_3"
     xmlns:l="ddi:logicalproduct:3_3"
     xmlns:r="ddi:reusable:3_3"
     xmlns:xhtml="http://www.w3.org/1999/xhtml"
-    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-    versionDate="2025-06-01"
-    isMaintainable="true"
-    scopeOfUniqueness="Maintainable">
-
-  <r:URN>urn:ddi:example.org:TestPackage:1</r:URN>
-  <r:Agency>example.org</r:Agency>
-  <r:ID>TestPackage</r:ID>
-  <r:Version>1.0.0</r:Version>
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
 
 
   <!-- ================================================================== -->
   <!-- CATEGORIES                                                         -->
-  <!--                                                                    -->
-  <!-- Categories define the meaning of response options. They live in a  -->
-  <!-- CategoryScheme and are referenced by Codes in a CodeList.          -->
   <!-- ================================================================== -->
 
-  <l:CategoryScheme versionDate="2025-06-01" isMaintainable="true" scopeOfUniqueness="Maintainable">
-    <r:URN>urn:ddi:example.org:CategoryScheme:1</r:URN>
-    <r:Agency>example.org</r:Agency>
-    <r:ID>CategoryScheme</r:ID>
-    <r:Version>1.0.0</r:Version>
-    <r:Label><r:Content xml:lang="en">Standard response categories</r:Content></r:Label>
-
-    <!-- Yes / No -->
+  <ddi:Fragment>
     <l:Category>
       <r:URN>urn:ddi:example.org:Category_Yes:1</r:URN>
       <r:Agency>example.org</r:Agency>
@@ -61,7 +43,9 @@
       <r:Version>1.0.0</r:Version>
       <r:Label><r:Content xml:lang="en">Yes</r:Content></r:Label>
     </l:Category>
+  </ddi:Fragment>
 
+  <ddi:Fragment>
     <l:Category>
       <r:URN>urn:ddi:example.org:Category_No:1</r:URN>
       <r:Agency>example.org</r:Agency>
@@ -69,8 +53,9 @@
       <r:Version>1.0.0</r:Version>
       <r:Label><r:Content xml:lang="en">No</r:Content></r:Label>
     </l:Category>
+  </ddi:Fragment>
 
-    <!-- Satisfaction scale -->
+  <ddi:Fragment>
     <l:Category>
       <r:URN>urn:ddi:example.org:Category_VeryDissatisfied:1</r:URN>
       <r:Agency>example.org</r:Agency>
@@ -78,7 +63,9 @@
       <r:Version>1.0.0</r:Version>
       <r:Label><r:Content xml:lang="en">Very dissatisfied</r:Content></r:Label>
     </l:Category>
+  </ddi:Fragment>
 
+  <ddi:Fragment>
     <l:Category>
       <r:URN>urn:ddi:example.org:Category_Dissatisfied:1</r:URN>
       <r:Agency>example.org</r:Agency>
@@ -86,7 +73,9 @@
       <r:Version>1.0.0</r:Version>
       <r:Label><r:Content xml:lang="en">Dissatisfied</r:Content></r:Label>
     </l:Category>
+  </ddi:Fragment>
 
+  <ddi:Fragment>
     <l:Category>
       <r:URN>urn:ddi:example.org:Category_Neutral:1</r:URN>
       <r:Agency>example.org</r:Agency>
@@ -94,7 +83,9 @@
       <r:Version>1.0.0</r:Version>
       <r:Label><r:Content xml:lang="en">Neither satisfied nor dissatisfied</r:Content></r:Label>
     </l:Category>
+  </ddi:Fragment>
 
+  <ddi:Fragment>
     <l:Category>
       <r:URN>urn:ddi:example.org:Category_Satisfied:1</r:URN>
       <r:Agency>example.org</r:Agency>
@@ -102,7 +93,9 @@
       <r:Version>1.0.0</r:Version>
       <r:Label><r:Content xml:lang="en">Satisfied</r:Content></r:Label>
     </l:Category>
+  </ddi:Fragment>
 
+  <ddi:Fragment>
     <l:Category>
       <r:URN>urn:ddi:example.org:Category_VerySatisfied:1</r:URN>
       <r:Agency>example.org</r:Agency>
@@ -110,24 +103,15 @@
       <r:Version>1.0.0</r:Version>
       <r:Label><r:Content xml:lang="en">Very satisfied</r:Content></r:Label>
     </l:Category>
-
-  </l:CategoryScheme>
+  </ddi:Fragment>
 
 
   <!-- ================================================================== -->
   <!-- CODE LISTS                                                         -->
-  <!--                                                                    -->
-  <!-- CodeLists associate numeric code values with Categories.           -->
-  <!-- They reference the CategoryScheme above.                           -->
   <!-- ================================================================== -->
 
-  <l:CodeListScheme versionDate="2025-06-01" isMaintainable="true" scopeOfUniqueness="Maintainable">
-    <r:URN>urn:ddi:example.org:CodeListScheme:1</r:URN>
-    <r:Agency>example.org</r:Agency>
-    <r:ID>CodeListScheme</r:ID>
-    <r:Version>1.0.0</r:Version>
-
-    <l:CodeList scopeOfUniqueness="Maintainable">
+  <ddi:Fragment>
+    <l:CodeList>
       <r:URN>urn:ddi:example.org:CodeList_YesNo:1</r:URN>
       <r:Agency>example.org</r:Agency>
       <r:ID>CodeList_YesNo</r:ID>
@@ -148,14 +132,16 @@
         </r:CategoryReference>
       </l:Code>
     </l:CodeList>
+  </ddi:Fragment>
 
-    <l:CodeList scopeOfUniqueness="Maintainable">
+  <ddi:Fragment>
+    <l:CodeList>
       <r:URN>urn:ddi:example.org:CodeList_Satisfaction:1</r:URN>
       <r:Agency>example.org</r:Agency>
       <r:ID>CodeList_Satisfaction</r:ID>
       <r:Version>2.0.0</r:Version>
       <r:Label><r:Content xml:lang="en">Satisfaction Scale (1-5)</r:Content></r:Label>
-      <r:Description><r:Content xml:lang="en">Five-point Likert scale for measuring satisfaction. Updated in v2.0.0 to add neutral midpoint label.</r:Content></r:Description>
+      <r:Description><r:Content xml:lang="en">Five-point Likert scale. Updated in v2.0.0 to add neutral midpoint label.</r:Content></r:Description>
       <l:Code>
         <r:Value>1</r:Value>
         <r:CategoryReference>
@@ -192,21 +178,14 @@
         </r:CategoryReference>
       </l:Code>
     </l:CodeList>
-
-  </l:CodeListScheme>
+  </ddi:Fragment>
 
 
   <!-- ================================================================== -->
   <!-- QUESTIONS                                                          -->
   <!-- ================================================================== -->
 
-  <d:QuestionScheme versionDate="2025-06-01" isMaintainable="true" scopeOfUniqueness="Maintainable">
-    <r:URN>urn:ddi:example.org:QuestionScheme:1</r:URN>
-    <r:Agency>example.org</r:Agency>
-    <r:ID>QuestionScheme</r:ID>
-    <r:Version>1.0.0</r:Version>
-
-    <!-- QuestionItem: text response -->
+  <ddi:Fragment>
     <d:QuestionItem>
       <r:URN>urn:ddi:example.org:QuestionItem_Text:1</r:URN>
       <r:Agency>example.org</r:Agency>
@@ -225,8 +204,9 @@
         <r:TypeOfObject>ManagedTextRepresentation</r:TypeOfObject>
       </d:TextDomainReference>
     </d:QuestionItem>
+  </ddi:Fragment>
 
-    <!-- QuestionItem: code response (Yes/No) -->
+  <ddi:Fragment>
     <d:QuestionItem>
       <r:URN>urn:ddi:example.org:QuestionItem_Coded:1</r:URN>
       <r:Agency>example.org</r:Agency>
@@ -247,8 +227,9 @@
         </r:CodeListReference>
       </d:CodeDomain>
     </d:QuestionItem>
+  </ddi:Fragment>
 
-    <!-- QuestionGrid: satisfaction matrix -->
+  <ddi:Fragment>
     <d:QuestionGrid>
       <r:URN>urn:ddi:example.org:QuestionGrid_Matrix:1</r:URN>
       <r:Agency>example.org</r:Agency>
@@ -279,23 +260,15 @@
         </d:CodeDomain>
       </d:GridDimension>
     </d:QuestionGrid>
-
-  </d:QuestionScheme>
+  </ddi:Fragment>
 
 
   <!-- ================================================================== -->
   <!-- CONTROL CONSTRUCTS                                                 -->
   <!-- ================================================================== -->
 
-  <d:ControlConstructScheme versionDate="2025-06-01" isMaintainable="true" scopeOfUniqueness="Maintainable">
-    <r:URN>urn:ddi:example.org:ControlConstructScheme:1</r:URN>
-    <r:Agency>example.org</r:Agency>
-    <r:ID>ControlConstructScheme</r:ID>
-    <r:Version>1.0.0</r:Version>
-
-
-    <!-- ---- Main Sequence ---- -->
-
+  <!-- Main Sequence -->
+  <ddi:Fragment>
     <d:Sequence>
       <r:URN>urn:ddi:example.org:Sequence_Main:1</r:URN>
       <r:Agency>example.org</r:Agency>
@@ -304,52 +277,45 @@
       <d:ConstructName><r:String xml:lang="en">MainSequence</r:String></d:ConstructName>
       <r:Label><r:Content xml:lang="en">Main Survey Flow</r:Content></r:Label>
 
-      <!-- Step 1: plain text statement -->
       <d:ControlConstructReference>
         <r:URN>urn:ddi:example.org:StatementItem_PlainText:1</r:URN>
         <r:TypeOfObject>StatementItem</r:TypeOfObject>
       </d:ControlConstructReference>
 
-      <!-- Step 2: HTML-formatted statement -->
       <d:ControlConstructReference>
         <r:URN>urn:ddi:example.org:StatementItem_WithHTML:1</r:URN>
         <r:TypeOfObject>StatementItem</r:TypeOfObject>
       </d:ControlConstructReference>
 
-      <!-- Step 3: text question -->
       <d:ControlConstructReference>
         <r:URN>urn:ddi:example.org:QuestionConstruct_Text:1</r:URN>
         <r:TypeOfObject>QuestionConstruct</r:TypeOfObject>
       </d:ControlConstructReference>
 
-      <!-- Step 4: coded question -->
       <d:ControlConstructReference>
         <r:URN>urn:ddi:example.org:QuestionConstruct_Coded:1</r:URN>
         <r:TypeOfObject>QuestionConstruct</r:TypeOfObject>
       </d:ControlConstructReference>
 
-      <!-- Step 5: conditional branch -->
       <d:ControlConstructReference>
         <r:URN>urn:ddi:example.org:IfThenElse_Branch:1</r:URN>
         <r:TypeOfObject>IfThenElse</r:TypeOfObject>
       </d:ControlConstructReference>
 
-      <!-- Step 6: loop -->
       <d:ControlConstructReference>
         <r:URN>urn:ddi:example.org:Loop_Repeating:1</r:URN>
         <r:TypeOfObject>Loop</r:TypeOfObject>
       </d:ControlConstructReference>
 
-      <!-- Step 7: grid question -->
       <d:ControlConstructReference>
         <r:URN>urn:ddi:example.org:QuestionConstruct_Grid:1</r:URN>
         <r:TypeOfObject>QuestionConstruct</r:TypeOfObject>
       </d:ControlConstructReference>
     </d:Sequence>
+  </ddi:Fragment>
 
-
-    <!-- ---- StatementItem: plain text ---- -->
-
+  <!-- StatementItem: plain text -->
+  <ddi:Fragment>
     <d:StatementItem>
       <r:URN>urn:ddi:example.org:StatementItem_PlainText:1</r:URN>
       <r:Agency>example.org</r:Agency>
@@ -362,10 +328,10 @@
         </d:LiteralText>
       </d:DisplayText>
     </d:StatementItem>
+  </ddi:Fragment>
 
-
-    <!-- ---- StatementItem: HTML formatted ---- -->
-
+  <!-- StatementItem: HTML formatted -->
+  <ddi:Fragment>
     <d:StatementItem>
       <r:URN>urn:ddi:example.org:StatementItem_WithHTML:1</r:URN>
       <r:Agency>example.org</r:Agency>
@@ -392,10 +358,10 @@
         </d:LiteralText>
       </d:DisplayText>
     </d:StatementItem>
+  </ddi:Fragment>
 
-
-    <!-- ---- QuestionConstructs ---- -->
-
+  <!-- QuestionConstructs -->
+  <ddi:Fragment>
     <d:QuestionConstruct>
       <r:URN>urn:ddi:example.org:QuestionConstruct_Text:1</r:URN>
       <r:Agency>example.org</r:Agency>
@@ -407,7 +373,9 @@
         <r:TypeOfObject>QuestionItem</r:TypeOfObject>
       </r:QuestionReference>
     </d:QuestionConstruct>
+  </ddi:Fragment>
 
+  <ddi:Fragment>
     <d:QuestionConstruct>
       <r:URN>urn:ddi:example.org:QuestionConstruct_Coded:1</r:URN>
       <r:Agency>example.org</r:Agency>
@@ -419,7 +387,9 @@
         <r:TypeOfObject>QuestionItem</r:TypeOfObject>
       </r:QuestionReference>
     </d:QuestionConstruct>
+  </ddi:Fragment>
 
+  <ddi:Fragment>
     <d:QuestionConstruct>
       <r:URN>urn:ddi:example.org:QuestionConstruct_Grid:1</r:URN>
       <r:Agency>example.org</r:Agency>
@@ -431,10 +401,10 @@
         <r:TypeOfObject>QuestionGrid</r:TypeOfObject>
       </r:QuestionReference>
     </d:QuestionConstruct>
+  </ddi:Fragment>
 
-
-    <!-- ---- IfThenElse ---- -->
-
+  <!-- IfThenElse -->
+  <ddi:Fragment>
     <d:IfThenElse>
       <r:URN>urn:ddi:example.org:IfThenElse_Branch:1</r:URN>
       <r:Agency>example.org</r:Agency>
@@ -458,7 +428,9 @@
         <r:TypeOfObject>StatementItem</r:TypeOfObject>
       </d:ElseConstructReference>
     </d:IfThenElse>
+  </ddi:Fragment>
 
+  <ddi:Fragment>
     <d:StatementItem>
       <r:URN>urn:ddi:example.org:StatementItem_ThenBranch:1</r:URN>
       <r:Agency>example.org</r:Agency>
@@ -470,7 +442,9 @@
         </d:LiteralText>
       </d:DisplayText>
     </d:StatementItem>
+  </ddi:Fragment>
 
+  <ddi:Fragment>
     <d:StatementItem>
       <r:URN>urn:ddi:example.org:StatementItem_ElseBranch:1</r:URN>
       <r:Agency>example.org</r:Agency>
@@ -482,10 +456,10 @@
         </d:LiteralText>
       </d:DisplayText>
     </d:StatementItem>
+  </ddi:Fragment>
 
-
-    <!-- ---- Loop ---- -->
-
+  <!-- Loop -->
+  <ddi:Fragment>
     <d:Loop>
       <r:URN>urn:ddi:example.org:Loop_Repeating:1</r:URN>
       <r:Agency>example.org</r:Agency>
@@ -513,10 +487,10 @@
         <r:TypeOfObject>Sequence</r:TypeOfObject>
       </d:ControlConstructReference>
     </d:Loop>
+  </ddi:Fragment>
 
-
-    <!-- ---- Nested Sequence (inside the Loop) ---- -->
-
+  <!-- Nested Sequence (inside the Loop) -->
+  <ddi:Fragment>
     <d:Sequence>
       <r:URN>urn:ddi:example.org:Sequence_InsideLoop:1</r:URN>
       <r:Agency>example.org</r:Agency>
@@ -535,7 +509,9 @@
         <r:TypeOfObject>QuestionConstruct</r:TypeOfObject>
       </d:ControlConstructReference>
     </d:Sequence>
+  </ddi:Fragment>
 
+  <ddi:Fragment>
     <d:StatementItem>
       <r:URN>urn:ddi:example.org:StatementItem_InsideLoop:1</r:URN>
       <r:Agency>example.org</r:Agency>
@@ -547,20 +523,14 @@
         </d:LiteralText>
       </d:DisplayText>
     </d:StatementItem>
-
-  </d:ControlConstructScheme>
+  </ddi:Fragment>
 
 
   <!-- ================================================================== -->
   <!-- INSTRUMENT                                                         -->
   <!-- ================================================================== -->
 
-  <d:InstrumentScheme versionDate="2025-06-01" isMaintainable="true" scopeOfUniqueness="Maintainable">
-    <r:URN>urn:ddi:example.org:InstrumentScheme:1</r:URN>
-    <r:Agency>example.org</r:Agency>
-    <r:ID>InstrumentScheme</r:ID>
-    <r:Version>1.0.0</r:Version>
-
+  <ddi:Fragment>
     <d:Instrument>
       <r:URN>urn:ddi:example.org:Instrument_Main:1</r:URN>
       <r:Agency>example.org</r:Agency>
@@ -577,7 +547,7 @@
         <r:TypeOfObject>Sequence</r:TypeOfObject>
       </d:ControlConstructReference>
     </d:Instrument>
+  </ddi:Fragment>
 
-  </d:InstrumentScheme>
 
-</g:ResourcePackage>
+</ddi:FragmentInstance>
